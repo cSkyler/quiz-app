@@ -115,78 +115,91 @@ export default function AdminPage() {
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 900 }}>
-      <h1>Admin - Chapters</h1>
-      <pre style={{ whiteSpace: 'pre-wrap' }}>{status}</pre>
-
+    <main className="ui-container">
+      <div className="ui-topbar">
+        <div>
+          <h1 className="ui-title">Admin - Chapters</h1>
+          <p className="ui-subtitle">创建章节、管理章节题目入口在这里</p>
+        </div>
+      </div>
+  
+      <div className="ui-status">{status}</div>
+  
       {!isAdmin ? null : (
         <>
-          <section style={{ marginTop: 16, padding: 16, border: '1px solid #ddd', borderRadius: 8 }}>
-            <h2 style={{ marginTop: 0 }}>新增章节</h2>
-            <div style={{ display: 'grid', gap: 10, maxWidth: 520 }}>
+          <div className="ui-card">
+            <h2 className="ui-title" style={{ fontSize: 16 }}>新增章节</h2>
+  
+            <div className="ui-col" style={{ marginTop: 10, maxWidth: 560 }}>
               <input
+                className="ui-input"
                 placeholder="章节标题"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                style={{ padding: 10 }}
               />
+  
               <input
+                className="ui-input"
                 placeholder="顺序（数字）"
                 type="number"
                 value={orderIndex}
                 onChange={(e) => setOrderIndex(Number(e.target.value))}
-                style={{ padding: 10 }}
               />
-              <button onClick={addChapter} disabled={!canSubmit} style={{ padding: 10 }}>
+  
+              <button className="ui-btn ui-btn-primary" onClick={addChapter} disabled={!canSubmit} style={{ maxWidth: 200 }}>
                 添加
               </button>
             </div>
-          </section>
-
-          <section style={{ marginTop: 16 }}>
-            <h2>章节列表</h2>
-
+          </div>
+  
+          <div className="ui-card">
+            <div className="ui-row" style={{ justifyContent: 'space-between' }}>
+              <h2 className="ui-title" style={{ fontSize: 16 }}>章节列表</h2>
+              <span className="ui-badge">{chapters.length} 章</span>
+            </div>
+  
             {loading ? (
-              <p>Loading...</p>
+              <p className="ui-subtitle">Loading...</p>
             ) : chapters.length === 0 ? (
-              <p>暂无章节。请先新增章节。</p>
+              <p className="ui-subtitle">暂无章节。请先新增章节。</p>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="ui-table" style={{ marginTop: 10 }}>
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 8 }}>顺序</th>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 8 }}>标题</th>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 8 }}>操作</th>
+                    <th style={{ width: 80 }}>顺序</th>
+                    <th>标题</th>
+                    <th style={{ width: 220 }}>操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   {chapters.map((c) => (
                     <tr key={c.id}>
-                      <td style={{ borderBottom: '1px solid #eee', padding: 8 }}>{c.order_index}</td>
-                      <td style={{ borderBottom: '1px solid #eee', padding: 8 }}>{c.title}</td>
-                      <td style={{ borderBottom: '1px solid #eee', padding: 8 }}>
-                      <div style={{ display: 'flex', gap: 8 }}>
-  <Link
-    href={`/admin/chapters/${c.id}`}
-    style={{ padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6, textDecoration: 'none' }}
-  >
-    管理题目
-  </Link>
-
-  <button onClick={() => deleteChapter(c.id)} style={{ padding: '6px 10px' }}>
-    删除
-  </button>
-</div>
-
+                      <td>{c.order_index}</td>
+                      <td style={{ fontWeight: 600 }}>{c.title}</td>
+                      <td>
+                        <div className="ui-row">
+                          <Link
+                            className="ui-btn"
+                            href={`/admin/chapters/${c.id}`}
+                            style={{ textDecoration: 'none' }}
+                          >
+                            管理题目
+                          </Link>
+  
+                          <button className="ui-btn ui-btn-danger" onClick={() => deleteChapter(c.id)}>
+                            删除
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
-          </section>
+          </div>
         </>
       )}
     </main>
   )
+  
 }

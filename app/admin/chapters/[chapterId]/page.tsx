@@ -239,158 +239,153 @@ export default function ChapterQuestionsPage() {
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 1000 }}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <Link href="/admin" style={{ textDecoration: 'none' }}>← 返回章节列表</Link>
-        <h1 style={{ margin: 0 }}>题目管理</h1>
+    <main className="ui-container">
+      <div className="ui-topbar">
+        <div>
+          <h1 className="ui-title">题目管理</h1>
+          <p className="ui-subtitle">录题、改题、删题都在这里完成</p>
+        </div>
+        <Link className="ui-link" href="/admin">← 返回章节列表</Link>
       </div>
-      <div style={{ display: 'grid', gap: 8, maxWidth: 700, marginBottom: 10 }}>
-  <textarea
-    placeholder="解析/解释（可选，建议填写）"
-    value={newExplanation}
-    onChange={(e) => setNewExplanation(e.target.value)}
-    rows={3}
-    style={{ padding: 10 }}
-  />
-</div>
-
-      <pre style={{ whiteSpace: 'pre-wrap' }}>{status}</pre>
-
+  
+      <div className="ui-status">{status}</div>
+  
       {!isAdmin ? null : (
         <>
-          <section style={{ marginTop: 12 }}>
-            <h2>章节</h2>
-            {chapter ? (
-              <p>
-                {chapter.order_index}. {chapter.title}
-              </p>
-            ) : (
-              <p>Loading chapter...</p>
-            )}
-          </section>
-
-          <section style={{ marginTop: 12 }}>
-            <h2>题目列表</h2>
-            <div style={{ margin: '12px 0', padding: 12, border: '1px solid #ddd', borderRadius: 8 }}>
-  <h3 style={{ marginTop: 0 }}>新增题目</h3>
-
-  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
-    <span>题型：</span>
-    <select
-      value={newType}
-      onChange={(e) => setNewType(e.target.value as 'tf' | 'single')}
-      style={{ padding: 10, maxWidth: 220 }}
-    >
-      <option value="tf">判断题（tf）</option>
-      <option value="single">选择题（single）</option>
-    </select>
-  </div>
-
-  {newType === 'tf' && (
-    <div style={{ padding: 12, border: '1px solid #ddd', borderRadius: 8 }}>
-      <h4 style={{ marginTop: 0 }}>判断题（tf）</h4>
-      <div style={{ display: 'grid', gap: 8, maxWidth: 700 }}>
-        <input
-          placeholder="题干（例如：抑郁发作至少持续2周）"
-          value={newStem}
-          onChange={(e) => setNewStem(e.target.value)}
-          style={{ padding: 10 }}
-        />
-        <select
-          value={newTf}
-          onChange={(e) => setNewTf(e.target.value as 'true' | 'false')}
-          style={{ padding: 10, maxWidth: 200 }}
-        >
-          <option value="true">正确</option>
-          <option value="false">错误</option>
-        </select>
-        <button onClick={addTfQuestion} disabled={adding} style={{ padding: 10, maxWidth: 200 }}>
-          {adding ? '添加中...' : '添加判断题'}
-        </button>
-      </div>
-    </div>
-  )}
-
-  {newType === 'single' && (
-    <div style={{ padding: 12, border: '1px solid #ddd', borderRadius: 8 }}>
-      <h4 style={{ marginTop: 0 }}>选择题（single）</h4>
-      <div style={{ display: 'grid', gap: 8, maxWidth: 700 }}>
-        <input
-          placeholder="题干"
-          value={singleStem}
-          onChange={(e) => setSingleStem(e.target.value)}
-          style={{ padding: 10 }}
-        />
-
-        <input
-          placeholder="A 选项"
-          value={optA}
-          onChange={(e) => setOptA(e.target.value)}
-          style={{ padding: 10 }}
-        />
-        <input
-          placeholder="B 选项"
-          value={optB}
-          onChange={(e) => setOptB(e.target.value)}
-          style={{ padding: 10 }}
-        />
-        <input
-          placeholder="C 选项"
-          value={optC}
-          onChange={(e) => setOptC(e.target.value)}
-          style={{ padding: 10 }}
-        />
-        <input
-          placeholder="D 选项"
-          value={optD}
-          onChange={(e) => setOptD(e.target.value)}
-          style={{ padding: 10 }}
-        />
-
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span>正确答案：</span>
-          <select
-            value={singleCorrect}
-            onChange={(e) => setSingleCorrect(e.target.value as 'A' | 'B' | 'C' | 'D')}
-            style={{ padding: 10, maxWidth: 120 }}
-          >
-            <option value="A">A</option>
-            <option value="B">B</option>
-            <option value="C">C</option>
-            <option value="D">D</option>
-          </select>
-
-          <button onClick={addSingleQuestion} disabled={addingSingle} style={{ padding: 10 }}>
-            {addingSingle ? '添加中...' : '添加选择题'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )}
-</div>
-
-
-
+          <div className="ui-card">
+            <div className="ui-row" style={{ justifyContent: 'space-between' }}>
+              <div>
+                <div className="ui-badge">章节</div>
+                <div style={{ marginTop: 8, fontSize: 16, fontWeight: 700 }}>
+                  {chapter ? `${chapter.order_index}. ${chapter.title}` : 'Loading...'}
+                </div>
+              </div>
+            </div>
+          </div>
+  
+          <div className="ui-card">
+            <h2 className="ui-title" style={{ fontSize: 16 }}>新增题目</h2>
+  
+            <div className="ui-row" style={{ marginTop: 10 }}>
+              <span className="ui-badge">题型</span>
+              <select
+                className="ui-select"
+                value={newType}
+                onChange={(e) => setNewType(e.target.value as 'tf' | 'single')}
+                style={{ maxWidth: 260 }}
+              >
+                <option value="tf">判断题（tf）</option>
+                <option value="single">选择题（single）</option>
+              </select>
+            </div>
+  
+            <div className="ui-col" style={{ marginTop: 10 }}>
+              <textarea
+                className="ui-textarea"
+                placeholder="解析/解释（可选，建议填写）"
+                value={newExplanation}
+                onChange={(e) => setNewExplanation(e.target.value)}
+                rows={3}
+              />
+            </div>
+  
+            <div style={{ marginTop: 12 }}>
+              {newType === 'tf' && (
+                <div className="ui-card" style={{ padding: 12 }}>
+                  <div className="ui-badge">判断题（tf）</div>
+                  <div className="ui-col" style={{ marginTop: 10 }}>
+                    <input
+                      className="ui-input"
+                      placeholder="题干（例如：抑郁发作至少持续2周）"
+                      value={newStem}
+                      onChange={(e) => setNewStem(e.target.value)}
+                    />
+  
+                    <div className="ui-row">
+                      <select
+                        className="ui-select"
+                        value={newTf}
+                        onChange={(e) => setNewTf(e.target.value as 'true' | 'false')}
+                        style={{ maxWidth: 220 }}
+                      >
+                        <option value="true">正确</option>
+                        <option value="false">错误</option>
+                      </select>
+  
+                      <button className="ui-btn ui-btn-primary" onClick={addTfQuestion} disabled={adding}>
+                        {adding ? '添加中...' : '添加判断题'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+  
+              {newType === 'single' && (
+                <div className="ui-card" style={{ padding: 12 }}>
+                  <div className="ui-badge">选择题（single）</div>
+                  <div className="ui-col" style={{ marginTop: 10 }}>
+                    <input
+                      className="ui-input"
+                      placeholder="题干"
+                      value={singleStem}
+                      onChange={(e) => setSingleStem(e.target.value)}
+                    />
+  
+                    <input className="ui-input" placeholder="A 选项" value={optA} onChange={(e) => setOptA(e.target.value)} />
+                    <input className="ui-input" placeholder="B 选项" value={optB} onChange={(e) => setOptB(e.target.value)} />
+                    <input className="ui-input" placeholder="C 选项" value={optC} onChange={(e) => setOptC(e.target.value)} />
+                    <input className="ui-input" placeholder="D 选项" value={optD} onChange={(e) => setOptD(e.target.value)} />
+  
+                    <div className="ui-row">
+                      <span className="ui-badge">正确答案</span>
+                      <select
+                        className="ui-select"
+                        value={singleCorrect}
+                        onChange={(e) => setSingleCorrect(e.target.value as 'A' | 'B' | 'C' | 'D')}
+                        style={{ maxWidth: 140 }}
+                      >
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                      </select>
+  
+                      <button className="ui-btn ui-btn-primary" onClick={addSingleQuestion} disabled={addingSingle}>
+                        {addingSingle ? '添加中...' : '添加选择题'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+  
+          <div className="ui-card">
+            <div className="ui-row" style={{ justifyContent: 'space-between' }}>
+              <h2 className="ui-title" style={{ fontSize: 16 }}>题目列表</h2>
+              <span className="ui-badge">{questions.length} 题</span>
+            </div>
+  
             {loading ? (
-              <p>Loading...</p>
+              <p className="ui-subtitle">Loading...</p>
             ) : questions.length === 0 ? (
-              <p>该章节暂无题目。请使用上方表单新增题目。</p>
+              <p className="ui-subtitle">该章节暂无题目。请使用上方表单新增题目。</p>
             ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="ui-table" style={{ marginTop: 10 }}>
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 8 }}>题型</th>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 8 }}>题干</th>
-                    <th style={{ textAlign: 'left', borderBottom: '1px solid #ddd', padding: 8 }}>操作</th>
+                    <th style={{ width: 90 }}>题型</th>
+                    <th>题干</th>
+                    <th style={{ width: 110 }}>操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   {questions.map((q) => (
                     <tr key={q.id}>
-                      <td style={{ borderBottom: '1px solid #eee', padding: 8 }}>{q.type}</td>
-                      <td style={{ borderBottom: '1px solid #eee', padding: 8 }}>{q.stem}</td>
-                      <td style={{ borderBottom: '1px solid #eee', padding: 8 }}>
-                        <button onClick={() => deleteQuestion(q.id)} style={{ padding: '6px 10px' }}>
+                      <td><span className="ui-badge">{q.type}</span></td>
+                      <td>{q.stem}</td>
+                      <td>
+                        <button className="ui-btn ui-btn-danger" onClick={() => deleteQuestion(q.id)}>
                           删除
                         </button>
                       </td>
@@ -398,11 +393,11 @@ export default function ChapterQuestionsPage() {
                   ))}
                 </tbody>
               </table>
-  
             )}
-          </section>
+          </div>
         </>
       )}
     </main>
   )
+  
 }
