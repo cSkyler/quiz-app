@@ -1,4 +1,5 @@
-'use client'
+import ChapterPracticeClient from '@/components/ChapterPracticeClient'
 
-// 直接复用你已经做好的刷题页（app/chapters/[chapterId]/page.tsx）
-export { default } from '../../../../chapters/[chapterId]/page'
+export default function Page({ params }: { params: { courseId: string; chapterId: string } }) {
+  return <ChapterPracticeClient chapterId={params.chapterId} courseId={params.courseId} />
+}

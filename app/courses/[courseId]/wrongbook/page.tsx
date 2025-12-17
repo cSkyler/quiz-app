@@ -223,12 +223,14 @@ export default function CourseWrongbookPage() {
                   </div>
 
                   <Link
-                    className="ui-btn ui-btn-primary"
-                    href={`/chapters/${it.chapter_id}?q=${it.question_id}&mode=wrongbook`}
-                    style={{ textDecoration: 'none' }}
-                  >
-                    去做这题
-                  </Link>
+  className="ui-btn ui-btn-primary"
+  href={`/courses/${courseId}/chapters/${it.chapter_id}?qid=${it.question_id}&from=wrongbook`}
+
+  style={{ textDecoration: 'none' }}
+>
+  去做这题
+</Link>
+
                 </div>
 
                 <div style={{ fontWeight: 700 }}>{it.stem}</div>
