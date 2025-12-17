@@ -42,6 +42,7 @@ export default function ChapterQuestionsPage() {
   const [singleCorrect, setSingleCorrect] = useState<'A' | 'B' | 'C' | 'D'>('A')
   const [addingSingle, setAddingSingle] = useState(false)
   const [newType, setNewType] = useState<'tf' | 'single'>('tf')
+  const [newExplanation, setNewExplanation] = useState('')
 
   useEffect(() => {
     async function init() {
@@ -127,7 +128,8 @@ export default function ChapterQuestionsPage() {
       stem: newStem.trim(),
       options: null,
       answer: { correct: newTf === 'true' } as TfAnswer,
-      explanation: null
+      explanation: newExplanation.trim() || null
+
     }
 
     const { error } = await supabase.from('questions').insert([payload])
@@ -139,6 +141,8 @@ export default function ChapterQuestionsPage() {
     }
 
     setNewStem('')
+    setNewExplanation('')
+
     setNewTf('true')
     setStatus('OK: 判断题已新增')
 
@@ -180,7 +184,8 @@ export default function ChapterQuestionsPage() {
       stem: singleStem.trim(),
       options,
       answer: { correct: singleCorrect } as SingleAnswer,
-      explanation: null
+      explanation: newExplanation.trim() || null
+
     }
 
     const { error } = await supabase.from('questions').insert([payload])
@@ -192,6 +197,7 @@ export default function ChapterQuestionsPage() {
     }
 
     setSingleStem('')
+    setNewExplanation('')
     setOptA('')
     setOptB('')
     setOptC('')
@@ -238,6 +244,15 @@ export default function ChapterQuestionsPage() {
         <Link href="/admin" style={{ textDecoration: 'none' }}>← 返回章节列表</Link>
         <h1 style={{ margin: 0 }}>题目管理</h1>
       </div>
+      <div style={{ display: 'grid', gap: 8, maxWidth: 700, marginBottom: 10 }}>
+  <textarea
+    placeholder="解析/解释（可选，建议填写）"
+    value={newExplanation}
+    onChange={(e) => setNewExplanation(e.target.value)}
+    rows={3}
+    style={{ padding: 10 }}
+  />
+</div>
 
       <pre style={{ whiteSpace: 'pre-wrap' }}>{status}</pre>
 
