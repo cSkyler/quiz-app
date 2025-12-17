@@ -43,7 +43,9 @@ export default function ChapterQuestionsPage() {
   const [addingSingle, setAddingSingle] = useState(false)
   const [newType, setNewType] = useState<'tf' | 'single'>('tf')
   const [newExplanation, setNewExplanation] = useState('')
-
+  const [bulkJson, setBulkJson] = useState('')
+  const [importing, setImporting] = useState(false)
+  
   useEffect(() => {
     async function init() {
         if (!chapterId) {
@@ -157,6 +159,113 @@ export default function ChapterQuestionsPage() {
 
     setAdding(false)
   }
+  async function bulkImportQuestions() {
+    if (!chapterId) return
+  
+    const raw = bulkJson.trim()
+    if (!raw) {
+      setStatus('ERROR: 批量导入内容为空')
+      return
+    }
+  
+    let items: any[] = []
+    try {
+      const parsed = JSON.parse(raw)
+      if (!Array.isArray(parsed)) throw new Error('JSON 必须是数组')
+      items = parsed
+    } catch (e: any) {
+      setStatus(`ERROR: JSON 解析失败：${e?.message ?? String(e)}`)
+      return
+    }
+  
+    // 基础校验 + 组装 payload
+    const rows = items.map((it, idx) => {
+      const type = it?.type
+      const stem = (it?.stem ?? '').toString().trim()
+      const explanation = (it?.explanation ?? '').toString().trim()
+  
+      if (!type || !['tf', 'single'].includes(type)) {
+        throw new Error(`第 ${idx + 1} 条：type 必须是 "tf" 或 "single"`)
+      }
+      if (!stem) {
+        throw new Error(`第 ${idx + 1} 条：stem 不能为空`)
+      }
+  
+      if (type === 'tf') {
+        const c = it?.answer?.correct
+        if (typeof c !== 'boolean') {
+          throw new Error(`第 ${idx + 1} 条：tf 的 answer.correct 必须是 true/false`)
+        }
+        return {
+          chapter_id: chapterId,
+          type: 'tf',
+          stem,
+          options: null,
+          answer: { correct: c },
+          explanation: explanation || null
+        }
+      }
+  
+      // single
+      const opts = it?.options
+      const correct = it?.answer?.correct
+      if (!Array.isArray(opts) || opts.length !== 4) {
+        throw new Error(`第 ${idx + 1} 条：single 的 options 必须是长度为4的数组（A-D）`)
+      }
+      const keys = opts.map((o: any) => o?.key)
+      const textsOk = opts.every((o: any) => (o?.text ?? '').toString().trim().length > 0)
+      if (JSON.stringify(keys) !== JSON.stringify(['A', 'B', 'C', 'D'])) {
+        throw new Error(`第 ${idx + 1} 条：single 的 options.key 必须依次为 A/B/C/D`)
+      }
+      if (!textsOk) {
+        throw new Error(`第 ${idx + 1} 条：single 的 A-D 选项文本都不能为空`)
+      }
+      if (!['A', 'B', 'C', 'D'].includes(correct)) {
+        throw new Error(`第 ${idx + 1} 条：single 的 answer.correct 必须是 A/B/C/D`)
+      }
+  
+      return {
+        chapter_id: chapterId,
+        type: 'single',
+        stem,
+        options: opts,
+        answer: { correct },
+        explanation: explanation || null
+      }
+    })
+  
+    setImporting(true)
+    setStatus(`Importing... ${rows.length} questions`)
+  
+    try {
+      // 分批写入，避免一次太大
+      const chunkSize = 100
+      for (let i = 0; i < rows.length; i += chunkSize) {
+        const chunk = rows.slice(i, i + chunkSize)
+        const { error } = await supabase.from('questions').insert(chunk)
+        if (error) throw error
+      }
+  
+      setStatus(`OK: 批量导入成功（${rows.length} 题）`)
+      setBulkJson('')
+  
+      // 重新加载列表
+      const { data: qs, error: qErr } = await supabase
+        .from('questions')
+        .select('id,type,stem,created_at')
+        .eq('chapter_id', chapterId)
+        .order('created_at', { ascending: true })
+  
+      if (qErr) setStatus(`WARN: imported but reload failed: ${qErr.message}`)
+      else setQuestions((qs ?? []) as Question[])
+    } catch (err: any) {
+      setStatus(`ERROR import: ${err?.message ?? String(err)}`)
+    } finally {
+      setImporting(false)
+    }
+  }
+  
+
   async function addSingleQuestion() {
     if (!chapterId) return
     if (singleStem.trim().length === 0) {
@@ -288,7 +397,46 @@ export default function ChapterQuestionsPage() {
                 rows={3}
               />
             </div>
-  
+            <div style={{ marginTop: 12 }}>
+  <div className="ui-badge">批量导入（JSON）</div>
+  <div className="ui-col" style={{ marginTop: 10 }}>
+    <textarea
+      className="ui-textarea"
+      placeholder='粘贴 JSON 数组，例如：[{"type":"tf","stem":"...","answer":{"correct":true},"explanation":"..."}]'
+      value={bulkJson}
+      onChange={(e) => setBulkJson(e.target.value)}
+      rows={10}
+    />
+    <div className="ui-row">
+      <button className="ui-btn ui-btn-primary" onClick={bulkImportQuestions} disabled={importing}>
+        {importing ? '导入中...' : '批量导入到本章节'}
+      </button>
+      <button
+        className="ui-btn"
+        onClick={() =>
+          setBulkJson(
+            JSON.stringify(
+              [
+                {
+                  type: 'tf',
+                  stem: '抑郁发作的诊断要求症状至少持续2周。',
+                  answer: { correct: true },
+                  explanation: '重性抑郁发作通常以持续至少2周为最低时长标准之一。'
+                }
+              ],
+              null,
+              2
+            )
+          )
+        }
+        disabled={importing}
+      >
+        填入示例
+      </button>
+    </div>
+  </div>
+</div>
+
             <div style={{ marginTop: 12 }}>
               {newType === 'tf' && (
                 <div className="ui-card" style={{ padding: 12 }}>

@@ -2,13 +2,16 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+
 export default function LoginPage() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [msg, setMsg] = useState('')
@@ -23,6 +26,9 @@ export default function LoginPage() {
     setMsg('Signing in...')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     setMsg(error ? `ERROR: ${error.message}` : 'OK: signIn success.')
+    router.replace('/chapters')
+router.refresh()
+
   }
 
   async function signOut() {
