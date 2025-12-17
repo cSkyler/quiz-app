@@ -1,205 +1,409 @@
 'use client'
 
-import { createClient } from '@supabase/supabase-js'
-import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
+import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-type Chapter = {
-  id: string
-  title: string
-  order_index: number
-  created_at: string
-}
+type Course = { id: string; title: string; order_index: number; created_at?: string }
+type Chapter = { id: string; title: string; order_index: number; course_id: string; created_at?: string }
 
 export default function AdminPage() {
+  const supabase = useMemo(() => supabaseBrowser(), [])
+
   const [status, setStatus] = useState('Checking auth...')
   const [isAdmin, setIsAdmin] = useState(false)
+  const [email, setEmail] = useState<string | null>(null)
 
+  // courses
+  const [courses, setCourses] = useState<Course[]>([])
+  const [selectedCourseId, setSelectedCourseId] = useState<string>('')
+
+  // create course
+  const [courseTitle, setCourseTitle] = useState('')
+  const [courseOrder, setCourseOrder] = useState<number>(1)
+  const [creatingCourse, setCreatingCourse] = useState(false)
+
+  // chapters for selected course
   const [chapters, setChapters] = useState<Chapter[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loadingChapters, setLoadingChapters] = useState(false)
 
-  const [title, setTitle] = useState('')
-  const [orderIndex, setOrderIndex] = useState<number>(1)
-  const canSubmit = useMemo(() => title.trim().length > 0 && Number.isFinite(orderIndex), [title, orderIndex])
+  // create chapter
+  const [chapterTitle, setChapterTitle] = useState('')
+  const [chapterOrder, setChapterOrder] = useState<number>(1)
+  const [creatingChapter, setCreatingChapter] = useState(false)
 
-  async function loadChapters() {
-    setLoading(true)
+  async function signOut() {
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
+
+  async function loadCourses() {
+    const { data, error } = await supabase
+      .from('courses')
+      .select('id,title,order_index,created_at')
+      .order('order_index', { ascending: true })
+
+    if (error) {
+      setStatus(`ERROR loading courses: ${error.message}`)
+      return
+    }
+
+    const list = (data ?? []) as Course[]
+    setCourses(list)
+
+    // 自动选中第一个课程（如果还没选）
+    if (!selectedCourseId && list.length > 0) {
+      setSelectedCourseId(list[0].id)
+    }
+  }
+
+  async function loadChapters(courseId: string) {
+    setLoadingChapters(true)
     const { data, error } = await supabase
       .from('chapters')
-      .select('*')
+      .select('id,title,order_index,course_id,created_at')
+      .eq('course_id', courseId)
       .order('order_index', { ascending: true })
-      .order('created_at', { ascending: true })
 
     if (error) {
       setStatus(`ERROR loading chapters: ${error.message}`)
-      setLoading(false)
+      setLoadingChapters(false)
       return
     }
 
     setChapters((data ?? []) as Chapter[])
-    setLoading(false)
+    setLoadingChapters(false)
   }
 
   useEffect(() => {
-    async function init() {
-      const { data: { user } } = await supabase.auth.getUser()
+    let cancelled = false
+
+    ;(async () => {
+      setStatus('Checking auth...')
+      const { data: sess } = await supabase.auth.getSession()
+      const user = sess.session?.user
+
       if (!user) {
-        setStatus('Not logged in. Go to /login first.')
         setIsAdmin(false)
+        setStatus('Not logged in. Go to /login first.')
         return
       }
 
+      setEmail(user.email ?? null)
+
+      // role check
       const { data: profile, error: pErr } = await supabase
         .from('user_profiles')
         .select('role')
         .eq('user_id', user.id)
-        .single()
+        .maybeSingle()
 
       if (pErr) {
-        setStatus(`ERROR reading profile: ${pErr.message}`)
         setIsAdmin(false)
+        setStatus(`ERROR reading profile: ${pErr.message}`)
         return
       }
 
       if (profile?.role !== 'admin') {
-        setStatus(`Logged in as ${user.email}, role=${profile?.role}. Not admin.`)
         setIsAdmin(false)
+        setStatus(`Logged in as ${user.email}, role=${profile?.role}. Not admin.`)
         return
       }
 
+      if (cancelled) return
       setIsAdmin(true)
       setStatus('OK: admin')
-      await loadChapters()
+
+      await loadCourses()
+    })()
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase])
+
+  // 当选择课程变化时，加载该课程的章节
+  useEffect(() => {
+    if (!isAdmin) return
+    if (!selectedCourseId) {
+      setChapters([])
+      return
+    }
+    loadChapters(selectedCourseId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCourseId, isAdmin])
+
+  async function addCourse() {
+    const title = courseTitle.trim()
+    if (!title) {
+      setStatus('ERROR: 课程标题不能为空')
+      return
     }
 
-    init()
-  }, [])
+    setCreatingCourse(true)
+    setStatus('Adding course...')
+
+    const { error } = await supabase.from('courses').insert([
+      {
+        title,
+        order_index: Number(courseOrder) || 1
+      }
+    ])
+
+    if (error) {
+      setStatus(`ERROR add course: ${error.message}`)
+      setCreatingCourse(false)
+      return
+    }
+
+    setStatus('OK: 课程已新增')
+    setCourseTitle('')
+    setCourseOrder(1)
+
+    await loadCourses()
+    setCreatingCourse(false)
+  }
 
   async function addChapter() {
-    if (!canSubmit) return
+    if (!selectedCourseId) {
+      setStatus('ERROR: 请先选择课程')
+      return
+    }
+
+    const title = chapterTitle.trim()
+    if (!title) {
+      setStatus('ERROR: 章节标题不能为空')
+      return
+    }
+
+    setCreatingChapter(true)
     setStatus('Adding chapter...')
 
     const { error } = await supabase.from('chapters').insert([
-      { title: title.trim(), order_index: orderIndex }
+      {
+        course_id: selectedCourseId,
+        title,
+        order_index: Number(chapterOrder) || 1
+      }
     ])
 
     if (error) {
       setStatus(`ERROR add chapter: ${error.message}`)
+      setCreatingChapter(false)
       return
     }
 
-    setTitle('')
-    setOrderIndex(1)
-    setStatus('OK: chapter added')
-    await loadChapters()
+    setStatus('OK: 章节已新增')
+    setChapterTitle('')
+    setChapterOrder(1)
+
+    await loadChapters(selectedCourseId)
+    setCreatingChapter(false)
   }
 
-  async function deleteChapter(id: string) {
-    if (!confirm('确定删除该章节吗？删除章节会同时删除该章节下的题目。')) return
+  async function deleteChapter(chapterId: string) {
+    if (!confirm('确定删除该章节吗？（会影响章节下题目展示）')) return
     setStatus('Deleting chapter...')
 
-    const { error } = await supabase.from('chapters').delete().eq('id', id)
+    const { error } = await supabase.from('chapters').delete().eq('id', chapterId)
     if (error) {
       setStatus(`ERROR delete chapter: ${error.message}`)
       return
     }
 
-    setStatus('OK: chapter deleted')
-    await loadChapters()
+    setStatus('OK: 章节已删除')
+    if (selectedCourseId) await loadChapters(selectedCourseId)
+  }
+
+  if (!isAdmin) {
+    return (
+      <main className="ui-container">
+        <div className="ui-topbar">
+          <div>
+            <h1 className="ui-title">管理端</h1>
+            <p className="ui-subtitle">仅管理员可进入</p>
+          </div>
+          <div className="ui-row" style={{ gap: 10 }}>
+            <Link className="ui-link" href="/">🏠 首页</Link>
+            <Link className="ui-link" href="/courses">课程</Link>
+            <Link className="ui-link" href="/login">去登录</Link>
+          </div>
+        </div>
+        <div className="ui-status">{status}</div>
+      </main>
+    )
   }
 
   return (
     <main className="ui-container">
       <div className="ui-topbar">
         <div>
-          <h1 className="ui-title">Admin - Chapters</h1>
-          <p className="ui-subtitle">创建章节、管理章节题目入口在这里</p>
+          <h1 className="ui-title">管理端</h1>
+          <p className="ui-subtitle">{email ? `管理员：${email}` : '管理员'}</p>
+        </div>
+        <div className="ui-row" style={{ gap: 10 }}>
+          <Link className="ui-link" href="/">🏠 首页</Link>
+          <Link className="ui-link" href="/courses">课程</Link>
+          <button className="ui-link" onClick={signOut} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}>
+            退出登录
+          </button>
         </div>
       </div>
-  
+
       <div className="ui-status">{status}</div>
-  
-      {!isAdmin ? null : (
-        <>
-          <div className="ui-card">
-            <h2 className="ui-title" style={{ fontSize: 16 }}>新增章节</h2>
-  
-            <div className="ui-col" style={{ marginTop: 10, maxWidth: 560 }}>
-              <input
-                className="ui-input"
-                placeholder="章节标题"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-  
-              <input
-                className="ui-input"
-                placeholder="顺序（数字）"
-                type="number"
-                value={orderIndex}
-                onChange={(e) => setOrderIndex(Number(e.target.value))}
-              />
-  
-              <button className="ui-btn ui-btn-primary" onClick={addChapter} disabled={!canSubmit} style={{ maxWidth: 200 }}>
-                添加
-              </button>
-            </div>
+
+      {/* 新增课程 */}
+      <div className="ui-card">
+        <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="ui-badge">课程管理</div>
+            <div style={{ marginTop: 8, fontSize: 16, fontWeight: 700 }}>新增课程</div>
           </div>
-  
-          <div className="ui-card">
-            <div className="ui-row" style={{ justifyContent: 'space-between' }}>
-              <h2 className="ui-title" style={{ fontSize: 16 }}>章节列表</h2>
-              <span className="ui-badge">{chapters.length} 章</span>
+          <span className="ui-badge">{courses.length} 门课</span>
+        </div>
+
+        <div className="ui-col" style={{ marginTop: 12, maxWidth: 720 }}>
+          <input
+            className="ui-input"
+            placeholder="课程标题（例如：心理病理学）"
+            value={courseTitle}
+            onChange={(e) => setCourseTitle(e.target.value)}
+          />
+
+          <div className="ui-row" style={{ gap: 10, flexWrap: 'wrap' }}>
+            <span className="ui-badge">顺序</span>
+            <input
+              className="ui-input"
+              style={{ maxWidth: 140 }}
+              type="number"
+              value={courseOrder}
+              onChange={(e) => setCourseOrder(Number(e.target.value))}
+            />
+
+            <button className="ui-btn ui-btn-primary" onClick={addCourse} disabled={creatingCourse}>
+              {creatingCourse ? '添加中...' : '新增课程'}
+            </button>
+
+            <button className="ui-btn" onClick={loadCourses}>
+              刷新课程列表
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 选择课程 + 章节管理 */}
+      <div className="ui-card">
+        <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div className="ui-badge">章节管理</div>
+            <div style={{ marginTop: 8, fontSize: 16, fontWeight: 700 }}>选择课程后管理章节</div>
+          </div>
+        </div>
+
+        <div className="ui-row" style={{ marginTop: 12, gap: 10, flexWrap: 'wrap' }}>
+          <span className="ui-badge">当前课程</span>
+          <select
+            className="ui-select"
+            value={selectedCourseId}
+            onChange={(e) => setSelectedCourseId(e.target.value)}
+            style={{ maxWidth: 420 }}
+          >
+            <option value="">请选择课程...</option>
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.order_index}. {c.title}
+              </option>
+            ))}
+          </select>
+
+          <button className="ui-btn" onClick={() => selectedCourseId && loadChapters(selectedCourseId)} disabled={!selectedCourseId}>
+            刷新章节列表
+          </button>
+        </div>
+
+        {!selectedCourseId ? (
+          <div className="ui-card" style={{ marginTop: 12 }}>
+            <p className="ui-subtitle">请先选择一门课程，然后再新增/查看该课程的章节。</p>
+          </div>
+        ) : (
+          <>
+            {/* 新增章节 */}
+            <div className="ui-card" style={{ marginTop: 12 }}>
+              <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontWeight: 700 }}>新增章节</div>
+                <span className="ui-badge">{chapters.length} 章</span>
+              </div>
+
+              <div className="ui-col" style={{ marginTop: 12, maxWidth: 720 }}>
+                <input
+                  className="ui-input"
+                  placeholder="章节标题（例如：第一章 绪论）"
+                  value={chapterTitle}
+                  onChange={(e) => setChapterTitle(e.target.value)}
+                />
+
+                <div className="ui-row" style={{ gap: 10, flexWrap: 'wrap' }}>
+                  <span className="ui-badge">顺序</span>
+                  <input
+                    className="ui-input"
+                    style={{ maxWidth: 140 }}
+                    type="number"
+                    value={chapterOrder}
+                    onChange={(e) => setChapterOrder(Number(e.target.value))}
+                  />
+
+                  <button className="ui-btn ui-btn-primary" onClick={addChapter} disabled={creatingChapter}>
+                    {creatingChapter ? '添加中...' : '新增章节'}
+                  </button>
+                </div>
+              </div>
             </div>
-  
-            {loading ? (
-              <p className="ui-subtitle">Loading...</p>
-            ) : chapters.length === 0 ? (
-              <p className="ui-subtitle">暂无章节。请先新增章节。</p>
-            ) : (
-              <table className="ui-table" style={{ marginTop: 10 }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: 80 }}>顺序</th>
-                    <th>标题</th>
-                    <th style={{ width: 220 }}>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {chapters.map((c) => (
-                    <tr key={c.id}>
-                      <td>{c.order_index}</td>
-                      <td style={{ fontWeight: 600 }}>{c.title}</td>
-                      <td>
-                        <div className="ui-row">
-                          <Link
-                            className="ui-btn"
-                            href={`/admin/chapters/${c.id}`}
-                            style={{ textDecoration: 'none' }}
-                          >
-                            管理题目
-                          </Link>
-  
-                          <button className="ui-btn ui-btn-danger" onClick={() => deleteChapter(c.id)}>
-                            删除
-                          </button>
-                        </div>
-                      </td>
+
+            {/* 章节列表 */}
+            <div className="ui-card" style={{ marginTop: 12 }}>
+              <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 className="ui-title" style={{ fontSize: 16 }}>章节列表</h2>
+                <span className="ui-badge">{chapters.length} 章</span>
+              </div>
+
+              {loadingChapters ? (
+                <p className="ui-subtitle">Loading...</p>
+              ) : chapters.length === 0 ? (
+                <p className="ui-subtitle">该课程暂无章节，请先新增。</p>
+              ) : (
+                <table className="ui-table" style={{ marginTop: 10 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 90 }}>顺序</th>
+                      <th>章节</th>
+                      <th style={{ width: 240 }}>操作</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </>
-      )}
+                  </thead>
+                  <tbody>
+                    {chapters.map((ch) => (
+                      <tr key={ch.id}>
+                        <td>{ch.order_index}</td>
+                        <td style={{ fontWeight: 600 }}>{ch.title}</td>
+                        <td>
+                          <div className="ui-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                            <Link className="ui-btn" href={`/admin/chapters/${ch.id}`} style={{ textDecoration: 'none' }}>
+                              题目管理
+                            </Link>
+                            <button className="ui-btn ui-btn-danger" onClick={() => deleteChapter(ch.id)}>
+                              删除章节
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </main>
   )
-  
 }

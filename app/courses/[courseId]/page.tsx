@@ -59,8 +59,8 @@ export default function CourseHomePage() {
             开始刷题（章节选择）
           </Link>
 
-          <Link className="ui-btn" href={`/courses/${courseId}/wrongbook`} style={{ textDecoration: 'none' }}>
-            错题本（待实现）
+          <Link className="ui-btn ui-btn-primary" href={`/courses/${courseId}/wrongbook`} style={{ textDecoration: 'none' }}>
+            错题本
           </Link>
 
           <Link className="ui-btn" href={`/courses/${courseId}/discussions`} style={{ textDecoration: 'none' }}>
