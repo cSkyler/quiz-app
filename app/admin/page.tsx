@@ -9,7 +9,10 @@ type Chapter = { id: string; title: string; order_index: number; course_id: stri
 
 export default function AdminPage() {
   const supabase = useMemo(() => supabaseBrowser(), [])
-
+  const [announcement, setAnnouncement] = useState('')
+  const [changelog, setChangelog] = useState('')
+  const [saving, setSaving] = useState(false)
+  
   const [status, setStatus] = useState('Checking auth...')
   const [isAdmin, setIsAdmin] = useState(false)
   const [email, setEmail] = useState<string | null>(null)
@@ -77,6 +80,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     let cancelled = false
+    
 
     ;(async () => {
       setStatus('Checking auth...')
@@ -104,19 +108,69 @@ export default function AdminPage() {
         return
       }
 
-      if (profile?.role !== 'admin') {
-        setIsAdmin(false)
-        setStatus(`Logged in as ${user.email}, role=${profile?.role}. Not admin.`)
-        return
-      }
+      const isPrivileged = profile?.role === 'admin' || profile?.role === 'owner'
 
+if (!isPrivileged) {
+  setIsAdmin(false)
+  setStatus(`Logged in as ${user.email}, role=${profile?.role}. Not authorized.`)
+  return
+}
+// 读取公告/更新说明（所有人可读，owner 可写）
+{
+  const { data, error } = await supabase
+    .from('site_settings')
+    .select('key,value')
+    .in('key', ['announcement', 'changelog'])
+
+  if (!error && data) {
+    const map: Record<string, string> = {}
+    for (const r of data) map[r.key] = r.value
+    setAnnouncement(map.announcement ?? '')
+    setChangelog(map.changelog ?? '')
+  }
+}
+
+setIsAdmin(true)
+
+      const { data, error } = await supabase
+      .from('site_settings')
+      .select('key,value')
+      .in('key', ['announcement', 'changelog'])
+  
+    if (!error && data) {
+      const map: Record<string, string> = {}
+      for (const r of data) map[r.key] = r.value
+      setAnnouncement(map.announcement ?? '')
+      setChangelog(map.changelog ?? '')
+    }
       if (cancelled) return
       setIsAdmin(true)
       setStatus('OK: admin')
 
       await loadCourses()
     })()
-
+    async function saveSiteSettings() {
+      setSaving(true)
+      try {
+        const { data: sess } = await supabase.auth.getSession()
+        const uid = sess.session?.user?.id ?? null
+    
+        const rows = [
+          { key: 'announcement', value: announcement, updated_by: uid, updated_at: new Date().toISOString() },
+          { key: 'changelog', value: changelog, updated_by: uid, updated_at: new Date().toISOString() },
+        ]
+    
+        const { error } = await supabase
+          .from('site_settings')
+          .upsert(rows, { onConflict: 'key' })
+    
+        if (error) alert(`保存失败：${error.message}`)
+        else alert('已保存')
+      } finally {
+        setSaving(false)
+      }
+    }
+    
     return () => {
       cancelled = true
     }
@@ -234,7 +288,28 @@ export default function AdminPage() {
       </main>
     )
   }
-
+  async function saveSiteSettings() {
+    setSaving(true)
+    try {
+      const { data: sess } = await supabase.auth.getSession()
+      const uid = sess.session?.user?.id ?? null
+  
+      const rows = [
+        { key: 'announcement', value: announcement, updated_by: uid, updated_at: new Date().toISOString() },
+        { key: 'changelog', value: changelog, updated_by: uid, updated_at: new Date().toISOString() },
+      ]
+  
+      const { error } = await supabase
+        .from('site_settings')
+        .upsert(rows, { onConflict: 'key' })
+  
+      if (error) alert(`保存失败：${error.message}`)
+      else alert('已保存')
+    } finally {
+      setSaving(false)
+    }
+  }
+  
   return (
     <main className="ui-container">
       <div className="ui-topbar">
@@ -395,12 +470,46 @@ export default function AdminPage() {
                             </button>
                           </div>
                         </td>
+                        
                       </tr>
+                      
                     ))}
                   </tbody>
                 </table>
               )}
             </div>
+            <div className="ui-card" style={{ marginTop: 14 }}>
+  <h2 className="ui-title" style={{ fontSize: 18, marginTop: 0 }}>公告与更新</h2>
+
+  <div className="ui-subtitle" style={{ marginTop: 8 }}>公告（首页展示）</div>
+  <textarea
+    className="ui-textarea"
+    rows={5}
+    value={announcement}
+    onChange={(e) => setAnnouncement(e.target.value)}
+    placeholder="写给同学们的公告…"
+  />
+
+  <div className="ui-subtitle" style={{ marginTop: 10 }}>更新说明（首页展示）</div>
+  <textarea
+    className="ui-textarea"
+    rows={6}
+    value={changelog}
+    onChange={(e) => setChangelog(e.target.value)}
+    placeholder="本次更新内容…"
+  />
+
+  <div className="ui-row" style={{ marginTop: 12, gap: 10 }}>
+    <button className="ui-btn ui-btn-primary" onClick={saveSiteSettings} disabled={saving}>
+      {saving ? '保存中…' : '保存'}
+    </button>
+  </div>
+
+  <p className="ui-subtitle" style={{ marginTop: 10 }}>
+    仅 owner 可保存；其他角色会被数据库 RLS 拒绝。
+  </p>
+</div>
+
           </>
         )}
       </div>

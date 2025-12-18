@@ -17,7 +17,9 @@ export default function HomePage() {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [courses, setCourses] = useState<Course[]>([])
-
+  const [announcement, setAnnouncement] = useState('')
+  const [changelog, setChangelog] = useState('')
+  
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSessionEmail(session?.user?.email ?? null)
@@ -50,11 +52,27 @@ export default function HomePage() {
           .eq('user_id', session.user.id)
           .maybeSingle()
 
-        if (!pErr && prof?.role === 'admin') setIsAdmin(true)
-        else setIsAdmin(false)
+          if (!pErr && (prof?.role === 'admin' || prof?.role === 'owner')) setIsAdmin(true)
+            else setIsAdmin(false)
+            
       } else {
         setIsAdmin(false)
       }
+// 公告/更新说明
+const { data: sRows, error: sErr } = await supabase
+  .from('site_settings')
+  .select('key,value')
+  .in('key', ['announcement', 'changelog'])
+
+if (sErr) {
+  // 不阻塞首页（公告读取失败不影响刷题）
+  console.log('site_settings read error:', sErr.message)
+} else {
+  const map: Record<string, string> = {}
+  for (const r of sRows ?? []) map[r.key] = r.value
+  setAnnouncement(map.announcement ?? '')
+  setChangelog(map.changelog ?? '')
+}
 
       setStatus('OK')
     })()
@@ -185,10 +203,12 @@ export default function HomePage() {
   </div>
 
   <div style={{ marginTop: 10 }}>
-    <p className="ui-body" style={{ marginTop: 0 }}>
-      本平台由 <strong>抱水</strong> 个人搭建并维护，面向同学们免费开放使用。平台以“高效刷题 + 错题复盘”为核心，
-      当前仍在迭代中，如遇到题库、答案或功能异常，欢迎随时反馈，我会尽快修复与优化。
-    </p>
+  <p className="ui-body" style={{ marginTop: 0, whiteSpace: 'pre-wrap' }}>
+  {announcement?.trim()
+    ? announcement
+    : '本平台由 抱水 个人搭建并维护，面向同学们免费开放使用。平台以“高效刷题 + 错题复盘”为核心，当前仍在迭代中，如遇到题库、答案或功能异常，欢迎随时反馈，我会尽快修复与优化。'}
+</p>
+
     <p className="ui-body" style={{ marginBottom: 0 }}>
       使用提示：游客模式可刷题但不保存进度；登录后支持多设备同步与错题/熟练度记录。
     </p>
@@ -200,7 +220,12 @@ export default function HomePage() {
     <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
       <div>
         <div className="ui-label">更新</div>
-        <div className="ui-body ui-muted">手机端课程列表已优化为卡片布局，提升可读性与触控体验。</div>
+        <div className="ui-body ui-muted" style={{ whiteSpace: 'pre-wrap' }}>
+  {changelog?.trim()
+    ? changelog
+    : '手机端课程列表已优化为卡片布局，提升可读性与触控体验。'}
+</div>
+
       </div>
       <span className="ui-badge">v0.1</span>
     </div>
@@ -209,12 +234,8 @@ export default function HomePage() {
   <div style={{ marginTop: 12 }} className="ui-divider" />
 
   <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-    <Link className="ui-btn ui-btn-primary" href="/feedback" style={{ textDecoration: 'none', textAlign: 'center' }}>
-      反馈入口
-    </Link>
-    <Link className="ui-btn" href="/updates" style={{ textDecoration: 'none', textAlign: 'center' }}>
-      更新记录
-    </Link>
+    
+    
   </div>
 
   <div className="ui-subtle" style={{ marginTop: 10 }}>

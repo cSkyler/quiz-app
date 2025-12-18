@@ -514,3 +514,17 @@ body{
 .ui-btn{
   text-decoration: none;
 }
+.ui-textarea{
+  width: 100%;
+  resize: vertical;
+  border-radius: 14px;
+  padding: 12px 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.88);
+  outline: none;
+}
+.ui-textarea:focus{
+  border-color: rgba(140,190,255,0.26);
+  box-shadow: 0 0 0 3px rgba(140,190,255,0.12);
+}
