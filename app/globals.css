@@ -40,9 +40,9 @@ body{
 
   /* 纯渐变背景：不会出现一条条黑线 */
   background:
-    radial-gradient(1200px 600px at 20% 10%, rgba(110,168,255,.18), transparent 60%),
-    radial-gradient(900px 500px at 80% 30%, rgba(90,215,166,.16), transparent 55%),
-    linear-gradient(180deg, #071423 0%, #091a2d 55%, #06111f 100%);
+    radial-gradient(1200px 600px at 20% 10%, rgba(27, 47, 77, 0.329), transparent 60%),
+    radial-gradient(900px 500px at 80% 30%, rgba(137, 22, 182, 0.527), transparent 55%),
+    linear-gradient(180deg, #3167a5 0%, #120829 55%, #061122 100%);
 
   background-attachment: fixed;
 }
@@ -57,14 +57,14 @@ body{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:12px;
+  gap:13px;
   margin-bottom: 14px;
 }
 
 .ui-title{
   font-size: 20px;
   font-weight: 700;
-  letter-spacing: .2px;
+  letter-spacing: .3px;
   margin: 0;
 }
 
@@ -89,7 +89,7 @@ body{
 
 .ui-input, .ui-select, .ui-textarea{
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px 13px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: rgba(0,0,0,.25);
@@ -108,12 +108,24 @@ body{
   border: 1px solid var(--border);
   background: rgba(255,255,255,.06);
   color: var(--text);
-  padding: 10px 12px;
+  padding: 10px 13px;
   border-radius: 10px;
   cursor:pointer;
+  
 }
 
 .ui-btn:hover{ background: rgba(255,255,255,.10); }
+
+
+.ui-btn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;          /* 避免文字“漂” */
+  padding-top: 10px;       /* 上下对称 */
+  padding-bottom: 10px;
+}
+
 
 .ui-btn-primary{
   border-color: rgba(110,168,255,.5);
@@ -135,7 +147,7 @@ body{
 
 .ui-status{
   margin-top: 10px;
-  padding: 10px 12px;
+  padding: 10px 13px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: rgba(0,0,0,.22);
@@ -147,22 +159,22 @@ body{
   width: 100%;
   border-collapse: collapse;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 13px;
   border: 1px solid var(--border);
 }
 
 .ui-table th{
   text-align:left;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   font-weight: 600;
   background: rgba(255,255,255,.06);
-  padding: 10px 12px;
+  padding: 10px 13px;
   border-bottom: 1px solid var(--border);
 }
 
 .ui-table td{
-  padding: 10px 12px;
+  padding: 10px 13px;
   border-bottom: 1px solid rgba(255,255,255,.06);
 }
 
@@ -173,7 +185,332 @@ body{
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   background: rgba(0,0,0,.22);
+}
+/* 表格外层允许横向滚动，避免窄屏挤成竖排字 */
+.ui-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ui-table { min-width: 680px; }
+
+/* 两行截断：移动端标题/描述更像 App */
+.ui-clamp-2{
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 触控尺寸：按钮高度、圆角 */
+.ui-btn {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 13px;
+
+  /* 关键：垂直/水平居中，兼容 Link/button */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  /* 关键：避免文字视觉偏上 */
+  line-height: 1;
+  vertical-align: middle;
+
+  /* 可选：按钮文字更像 app */
+  font-weight: 600;
+  gap: 8px;
+}
+
+.ui-card { border-radius: 16px; }
+
+/* 补一个二级标题 */
+.ui-h2 { font-size: 16px; font-weight: 700; line-height: 1.35; }
+
+/* 行布局：移动端允许换行 */
+.ui-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+/* Responsive helpers (不依赖 Tailwind) */
+.ui-only-mobile { display: block; }
+.ui-only-desktop { display: none; }
+
+@media (min-width: 768px) {
+  .ui-only-mobile { display: none !important; }
+  .ui-only-desktop { display: block !important; }
+}
+/* Typography tuning (高级感：层次、克制对比、统一行高) */
+.ui-title {
+  color: rgba(255,255,255,0.92);
+  letter-spacing: 0.3px;
+}
+
+.ui-body {
+  color: rgba(255,255,255,0.78);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.ui-subtitle,
+.ui-muted {
+  color: rgba(255,255,255,0.60);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ui-meta {
+  color: rgba(255,255,255,0.55);
+  font-size: 13px;
+}
+
+.ui-label {
+  color: rgba(255,255,255,0.72);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.ui-subtle {
+  margin-top: 8px;
+  color: rgba(255,255,255,0.50);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* 分割线更克制 */
+.ui-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+}
+.ui-body + .ui-body { margin-top: 10px; }
+/* Mobile: 禁止横向滚动（兜底，避免任何页面出现左右滑动） */
+@media (max-width: 767px) {
+  html, body { overflow-x: hidden; }
+  .ui-container { overflow-x: hidden; }
+}
+/* Button helper: 移动端按钮占满宽度，避免挤压导致横向滚动 */
+.ui-btn-block {
+  width: 100%;
+  display: inline-flex; /* 你之前为了居中已经设过 ui-btn，这里确保 link 也一致 */
+}
+/* 章节列表：左文案右按钮，按钮锁定在右侧 */
+.ui-chapter-item{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 13px;
+}
+
+.ui-chapter-text{
+  min-width: 0; /* 允许内部文本收缩/换行，避免挤出屏幕 */
+  flex: 1 1 auto;
+}
+
+/* 标题默认大小 */
+.ui-chapter-title{
+  color: rgba(255,255,255,0.92);
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.35;
+
+  /* 允许两行：比强行一行更高级，也不影响右侧按钮 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 标题过长时：缩小字号（仍保留两行截断） */
+.ui-chapter-title--tight{
+  font-size: 14px;
+  letter-spacing: 0.1px;
+}
+
+/* 右侧按钮锁定：不允许被挤到下一行、不允许缩小 */
+.ui-chapter-cta{
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.ui-item{
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-radius: 14px;
+  padding: 13px 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.ui-chipbar{
+  display:flex;
+  gap:10px;
+  flex-wrap:nowrap;
+  overflow-x:auto;
+  overflow-y:hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 6px;
+}
+.ui-chipbar > *{ flex:0 0 auto; }
+.ui-feedbackbar{
+  border-radius: 16px;
+  padding: 13px 14px;
+  margin-top: 13px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(13px);
+  display:flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 13px;
+}
+
+.ui-feedbackbar__left{ min-width: 0; }
+.ui-feedbackbar__title{
+  font-weight: 800;
+  font-size: 15px;
+  color: rgba(255,255,255,0.92);
+  letter-spacing: 0.3px;
+}
+.ui-feedbackbar__sub{
+  margin-top: 4px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.62);
+  line-height: 1.35;
+}
+.ui-feedbackbar__right{
+  flex: 0 0 auto;
+  max-width: 46%;
+  text-align: right;
+}
+.ui-feedbackbar__ans{
+  font-weight: 700;
+  font-size: 13px;
+  color: rgba(255,255,255,0.85);
+}
+.ui-feedbackbar__hint{
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+}
+
+/* 状态高亮：高级感用“轻微光晕+边框色差”，不要大红大绿 */
+.ui-feedbackbar--idle{
+  box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+}
+.ui-feedbackbar--ok{
+  border-color: rgba(80, 200, 120, 0.25);
+  box-shadow: 0 0 0 1px rgba(80,200,120,0.12), 0 13px 34px rgba(0,0,0,0.30);
+  animation: ui-pulse-ok 180ms ease-out;
+}
+.ui-feedbackbar--bad{
+  border-color: rgba(255, 90, 90, 0.25);
+  box-shadow: 0 0 0 1px rgba(255,90,90,0.12), 0 13px 34px rgba(0,0,0,0.30);
+  animation: ui-shake 240ms ease-in-out;
+}
+.ui-feedbackbar--neutral{
+  border-color: rgba(255, 200, 80, 0.22);
+  box-shadow: 0 0 0 1px rgba(255,200,80,0.10), 0 13px 34px rgba(0,0,0,0.30);
+}
+
+@keyframes ui-pulse-ok{
+  0%{ transform: scale(0.995); }
+  100%{ transform: scale(1); }
+}
+@keyframes ui-shake{
+  0%{ transform: translateX(0); }
+  25%{ transform: translateX(-6px); }
+  50%{ transform: translateX(6px); }
+  75%{ transform: translateX(-4px); }
+  100%{ transform: translateX(0); }
+}
+.ui-card--ok{
+  border-color: rgba(80, 200, 120, 0.22);
+  box-shadow: 0 0 0 1px rgba(80,200,120,0.10), 0 18px 60px rgba(0,0,0,0.40);
+  transform: translateZ(0);
+}
+.ui-card--bad{
+  border-color: rgba(255, 90, 90, 0.22);
+  box-shadow: 0 0 0 1px rgba(255,90,90,0.10), 0 18px 60px rgba(0,0,0,0.40);
+  animation: ui-shake 240ms ease-in-out;
+}
+.ui-card--neutral{
+  border-color: rgba(255, 200, 80, 0.18);
+  box-shadow: 0 0 0 1px rgba(255,200,80,0.08), 0 18px 60px rgba(0,0,0,0.40);
+}
+.ui-opt{
+  display:flex;
+  align-items:center; /* 从 flex-start 改为 center，修正“文字偏上”观感 */
+  gap:10px;
+  text-align:left;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.ui-opt__k{
+  width: 23px;
+  height: 23px;
+  border-radius: 8px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight: 800;
+  font-size: 13px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.ui-opt__t{
+  flex: 1 1 auto;
+  line-height: 1.35;
+  color: rgba(255,255,255,0.86);
+}
+/* 选项高亮：用 ring 做“更粗”的视觉边缘 */
+.ui-opt--picked{
+  border-color: rgba(50, 204, 231, 0.685);
+  box-shadow: 0 0 0 3px rgba(140,190,255,0.18);
+}
+
+.ui-opt--correct{
+  border-color: rgba(80, 200, 120, 0.34);
+  box-shadow: 0 0 0 3px rgba(80,200,120,0.18);
+}
+
+.ui-opt--wrong{
+  border-color: rgba(255, 90, 90, 0.34);
+  box-shadow: 0 0 0 3px rgba(255,90,90,0.18);
+}
+
+.ui-opt--dim{
+  opacity: 0.74;
+  box-shadow: none;
+}
+
+/* 点击瞬间更粗：松手后会回落到上面稳定的 3px ring */
+.ui-opt:active{
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.10);
+  transform: translateY(1px);
+}
+/* Link 也能像按钮：导航用（高级感 ghost） */
+.ui-btn-ghost{
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.84);
+  text-decoration: none;
+}
+
+.ui-btn-ghost:hover{
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.16);
+}
+
+.ui-btn-ghost:active{
+  transform: translateY(1px);
+}
+
+/* 小号按钮（用于 topbar 的返回/查看全部） */
+.ui-btn-sm{
+  padding: 8px 10px;
+  border-radius: 13px;
+  font-size: 13px;
+}
+
+/* 让 Link 用 ui-btn 时也保持居中（若你 ui-btn 已改成 inline-flex 可忽略） */
+.ui-btn{
+  text-decoration: none;
 }

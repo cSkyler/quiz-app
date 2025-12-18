@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
+
 type QType = 'tf' | 'single' | 'multi' | 'blank' | 'short' | 'case'
 
 type Q = {
@@ -49,6 +50,12 @@ function sameSet(a: string[], b: string[]) {
 export default function ChapterPracticeClient(props: { chapterId?: string; courseId?: string }) {
   const route = useParams() as { courseId?: string | string[]; chapterId?: string | string[] }
   const sp = useSearchParams()
+// URL params: 目录/做题模式 + 题型筛选 + 指定题目
+
+const typeParam = sp.get('type') // tf | single | multi | fill | short | case
+const qParam = sp.get('q')       // question id
+const viewMode = sp.get('mode') === 'catalog' ? 'catalog' : 'quiz'
+
 
   const chapterIdRaw = props.chapterId ?? route.chapterId
   const chapterId = Array.isArray(chapterIdRaw) ? chapterIdRaw[0] : chapterIdRaw
@@ -67,10 +74,14 @@ export default function ChapterPracticeClient(props: { chapterId?: string; cours
   }
 
   const backHref = courseId ? `/courses/${courseId}/chapters` : '/chapters'
-  const jumpQid = sp.get('qid') || sp.get('q')
+  const jumpQid = qParam
+
   const fromWrongbook = sp.get('from') === 'wrongbook'
   const wrongbookHref = courseId ? `/courses/${courseId}/wrongbook` : '/courses'
-  
+  const backToCatalogHref = `?mode=catalog${typeParam ? `&type=${typeParam}` : ''}`
+const topLeftHref = fromWrongbook ? wrongbookHref : (viewMode === 'quiz' ? backToCatalogHref : backHref)
+const topLeftText = fromWrongbook ? '返回错题本' : (viewMode === 'quiz' ? '返回目录' : '返回章节')
+
   const supabase = useMemo(() => supabaseBrowser(), [])
 
   const [status, setStatus] = useState('Loading...')
@@ -78,6 +89,8 @@ export default function ChapterPracticeClient(props: { chapterId?: string; cours
   const [userId, setUserId] = useState<string | null>(null)
 
   const [questions, setQuestions] = useState<Q[]>([])
+  const [allQuestions, setAllQuestions] = useState<Q[]>([])
+
   const [idx, setIdx] = useState(0)
 
   // 模式：全部 / 某题型 / 错题本
@@ -118,10 +131,13 @@ export default function ChapterPracticeClient(props: { chapterId?: string; cours
   })()
   const q = filteredList[idx]
 
-    // ====== 拉题 + 进度 + mastery ======
+ 
+  // ====== 拉题 + 进度 + mastery ======
 useEffect(() => {
-    let cancelled = false
   
+    let cancelled = false
+    
+
     ;(async () => {
       setStatus('Loading...')
   
@@ -148,7 +164,8 @@ useEffect(() => {
   
       const list = (qs ?? []) as Q[]
       setQuestions(list)
-  
+      setAllQuestions(list)
+
       // 3) URL 指定题目：优先跳转（来自错题本）
       if (jumpQid && list.length > 0) {
         const i = list.findIndex((x) => x.id === jumpQid)
@@ -338,6 +355,10 @@ useEffect(() => {
         return
       }
       setResult({ correct: null, msg: '已提交（自评）' })
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        ;(navigator as any).vibrate(12)
+      }
+      
       return
     }
 
@@ -405,7 +426,14 @@ useEffect(() => {
     }
 
     setResult({ correct: isCorrect, msg: isCorrect ? '正确' : '错误' })
-    await writeAttemptAndMastery(isCorrect, chosen)
+
+// 震动反馈（移动端生效；桌面端不会报错）
+if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+  ;(navigator as any).vibrate(isCorrect ? 18 : [25, 40, 25])
+}
+
+await writeAttemptAndMastery(isCorrect, chosen)
+
   }
 
   function next() {
@@ -422,6 +450,17 @@ useEffect(() => {
   }
 
   // ====== UI helpers ======
+
+  function optClass(isPicked: boolean, isCorrectOpt: boolean) {
+    // 未提交：只显示选中态
+    if (!result) return isPicked ? 'ui-btn ui-opt ui-opt--picked' : 'ui-btn ui-opt'
+    // 提交后：正确优先，其次错误选中
+    if (isCorrectOpt) return 'ui-btn ui-opt ui-opt--correct'
+    if (isPicked && result.correct === false) return 'ui-btn ui-opt ui-opt--wrong'
+    return 'ui-btn ui-opt ui-opt--dim'
+  }
+  
+
   function masteryBadge(qid: string) {
     const st = masteryMap[qid]?.status
     if (!sessionOk || !st) return null
@@ -437,9 +476,11 @@ useEffect(() => {
   return (
     <main className="ui-container">
       <div className="ui-topbar">
-      <Link className="ui-link" href={fromWrongbook ? wrongbookHref : backHref}>
-  ← {fromWrongbook ? '返回错题本' : '返回章节'}
+      <Link className="ui-btn ui-btn-ghost ui-btn-sm" href={topLeftHref}>
+  ← {topLeftText}
 </Link>
+
+
 
         <div className="ui-badge">
           {filteredList.length ? `进度 ${idx + 1}/${filteredList.length}` : '无题目'}
@@ -448,27 +489,138 @@ useEffect(() => {
 
       <div className="ui-status">{status}</div>
 
-      {/* 题型切换 + 错题本 */}
-      <div className="ui-card" style={{ padding: 12 }}>
-        <div className="ui-row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <button className="ui-btn" onClick={() => setMode('all')} disabled={mode === 'all'}>全部</button>
-          <button className="ui-btn" onClick={() => setMode('tf')} disabled={mode === 'tf'}>判断</button>
-          <button className="ui-btn" onClick={() => setMode('single')} disabled={mode === 'single'}>单选</button>
-          <button className="ui-btn" onClick={() => setMode('multi')} disabled={mode === 'multi'}>多选</button>
-          <button className="ui-btn" onClick={() => setMode('blank')} disabled={mode === 'blank'}>填空</button>
-          <button className="ui-btn" onClick={() => setMode('short')} disabled={mode === 'short'}>简答</button>
-          <button className="ui-btn" onClick={() => setMode('case')} disabled={mode === 'case'}>案例</button>
-          <button className="ui-btn ui-btn-primary" onClick={() => setMode('wrong')} disabled={mode === 'wrong'}>
-            错题本
-          </button>
-        </div>
-
-        {mode === 'wrong' && !sessionOk && (
-          <div className="ui-status" style={{ marginTop: 10 }}>
-            提示：游客模式无法读取错题本，请登录后使用。
-          </div>
-        )}
+{/* 做题反馈条：替代旧的题型按钮区（仅 quiz 模式显示） */}
+{viewMode === 'quiz' && (
+  <div
+    className={[
+      'ui-feedbackbar',
+      !result ? 'ui-feedbackbar--idle' : result.correct === true ? 'ui-feedbackbar--ok' : result.correct === false ? 'ui-feedbackbar--bad' : 'ui-feedbackbar--neutral'
+    ].join(' ')}
+  >
+    <div className="ui-feedbackbar__left">
+      <div className="ui-feedbackbar__title">
+        {!result
+          ? '待提交'
+          : result.correct === true
+            ? '回答正确'
+            : result.correct === false
+              ? '回答错误'
+              : '已提交（自评）'}
       </div>
+
+      <div className="ui-feedbackbar__sub">
+        {!result
+          ? '选择答案后提交，本题将记录熟练度。'
+          : q?.explanation
+            ? '已更新熟练度，可查看解析。'
+            : '已更新熟练度。'}
+      </div>
+    </div>
+
+    <div className="ui-feedbackbar__right">
+      {/* 错题时展示正确答案（自动判分题型） */}
+      {result?.correct === false && q ? (
+        <div className="ui-feedbackbar__ans">
+          正确：{
+            q.type === 'tf'
+              ? (q.answer?.correct ? '正确' : '错误')
+              : q.type === 'single'
+                ? (q.answer?.correct ?? '-')
+                : q.type === 'multi'
+                  ? ((q.answer?.correct ?? []).join('、') || '-')
+                  : q.type === 'blank'
+                    ? (Array.isArray(q.answer?.correct) ? q.answer.correct.join(' / ') : (q.answer?.correct ?? '-'))
+                    : '-'
+          }
+        </div>
+      ) : (
+        <div className="ui-feedbackbar__hint">
+          {q ? `题型：${q.type}` : ''}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+
+{/* 目录模式（先选题，再进入做题） */}
+{viewMode === 'catalog' && (
+  <div
+  className={[
+    'ui-card',
+    result?.correct === true ? 'ui-card--ok' : '',
+    result?.correct === false ? 'ui-card--bad' : '',
+    result?.correct === null ? 'ui-card--neutral' : ''
+  ].join(' ')}
+>
+
+    <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+      <h2 className="ui-title" style={{ fontSize: 16, margin: 0 }}>题目目录</h2>
+      <Link className="ui-btn ui-btn-ghost ui-btn-sm" href="?mode=quiz">
+  继续刷题 →
+</Link>
+
+    </div>
+
+    {/* 题型 chips：横排滚动 + 中文 */}
+<div className="ui-chipbar" style={{ marginTop: 12 }}>
+  <Link
+    className={!typeParam ? 'ui-btn ui-btn-primary ui-btn-compact' : 'ui-btn ui-btn-compact'}
+    href="?mode=catalog"
+    style={{ textDecoration: 'none' }}
+  >
+    全部（{allQuestions.length}）
+  </Link>
+
+  {(['tf', 'single', 'multi', 'blank', 'short', 'case'] as QType[]).map((t) => {
+    const label =
+      t === 'tf' ? '判断' :
+      t === 'single' ? '单选' :
+      t === 'multi' ? '多选' :
+      t === 'blank' ? '填空' :
+      t === 'short' ? '简答' :
+      '案例'
+
+    const cnt = allQuestions.filter((q) => q.type === t).length
+
+    return (
+      <Link
+        key={t}
+        className={typeParam === t ? 'ui-btn ui-btn-primary ui-btn-compact' : 'ui-btn ui-btn-compact'}
+        href={`?mode=catalog&type=${t}`}
+        style={{ textDecoration: 'none' }}
+      >
+        {label}（{cnt}）
+      </Link>
+    )
+  })}
+</div>
+
+
+    <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+      {allQuestions
+        .filter(q => (typeParam ? q.type === typeParam : true))
+        .map((it, i) => (
+          <Link
+            key={it.id}
+            className="ui-item"
+            href={`?mode=quiz&q=${it.id}`}
+            style={{ textDecoration: 'none' }}
+          >
+            <div className="ui-row" style={{ justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div className="ui-subtitle">#{i + 1} · {it.type}</div>
+                <div className="ui-h2 ui-clamp-2">{it.stem}</div>
+              </div>
+              <span className="ui-badge">进入</span>
+            </div>
+          </Link>
+        ))}
+    </div>
+  </div>
+)}
+
+      
 
       {/* 错题本总览 */}
       {mode === 'wrong' && sessionOk && wrongOverview && (
@@ -511,7 +663,7 @@ useEffect(() => {
       )}
 
       {/* 正常做题区（含：错题本点进去后的做题） */}
-      {!(mode === 'wrong' && sessionOk && wrongOverview) && (
+      {viewMode === 'quiz' && !(mode === 'wrong' && sessionOk && wrongOverview) && (
         !q ? (
           <div className="ui-card">
             <p className="ui-subtitle">
@@ -536,34 +688,52 @@ useEffect(() => {
             {/* TF */}
             {q.type === 'tf' && (
               <div className="ui-row" style={{ marginTop: 12 }}>
-                <button className="ui-btn" onClick={() => setPickTf('true')} disabled={!!result}>
-                  {pickTf === 'true' ? '✅ 正确' : '正确'}
-                </button>
-                <button className="ui-btn" onClick={() => setPickTf('false')} disabled={!!result}>
-                  {pickTf === 'false' ? '✅ 错误' : '错误'}
-                </button>
+                <button
+  className={optClass(pickTf === 'true', !!q.answer?.correct)}
+  onClick={() => setPickTf('true')}
+  disabled={!!result}
+>
+  正确
+</button>
+
+<button
+  className={optClass(pickTf === 'false', !q.answer?.correct)}
+  onClick={() => setPickTf('false')}
+  disabled={!!result}
+>
+  错误
+</button>
+
               </div>
             )}
 
-            {/* SINGLE */}
-            {q.type === 'single' && (
-              <div className="ui-col" style={{ marginTop: 12 }}>
-                {(q.options ?? []).map((o: any) => {
-                  const key = o.key as 'A' | 'B' | 'C' | 'D'
-                  return (
-                    <button
-                      key={key}
-                      className="ui-btn"
-                      onClick={() => setPickSingle(key)}
-                      disabled={!!result}
-                      style={{ textAlign: 'left' }}
-                    >
-                      {pickSingle === key ? `✅ ${key}. ${o.text}` : `${key}. ${o.text}`}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+           {/* SINGLE */}
+{q.type === 'single' && (
+  <div className="ui-col" style={{ marginTop: 12 }}>
+    {(() => {
+      const correctKey = q.answer?.correct as 'A' | 'B' | 'C' | 'D' | undefined
+      return (q.options ?? []).map((o: any) => {
+        const key = o.key as 'A' | 'B' | 'C' | 'D'
+        const picked = pickSingle === key
+        const isCorrectOpt = !!correctKey && key === correctKey
+
+        return (
+          <button
+            key={key}
+            className={optClass(picked, isCorrectOpt)}
+            onClick={() => setPickSingle(key)}
+            disabled={!!result}
+            style={{ textAlign: 'left' }}
+          >
+            <span className="ui-opt__k">{key}</span>
+            <span className="ui-opt__t">{o.text}</span>
+          </button>
+        )
+      })
+    })()}
+  </div>
+)}
+
 
             {/* MULTI */}
             {q.type === 'multi' && (

@@ -44,8 +44,11 @@ export default function CourseHomePage() {
   return (
     <main className="ui-container">
       <div className="ui-topbar">
-        <Link className="ui-link" href="/courses">← 返回课程</Link>
-        <Link className="ui-link" href="/">首页</Link>
+      <Link className="ui-btn ui-btn-ghost ui-btn-sm" href="/">
+  ← 返回首页
+</Link>
+
+       
       </div>
 
       <div className="ui-status">{status}</div>

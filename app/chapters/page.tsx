@@ -49,7 +49,7 @@ export default function ChaptersPage() {
             {sessionEmail ? `已登录：${sessionEmail}` : '未登录：可刷题但不保存进度'}
           </p>
         </div>
-        <Link className="ui-link" href={sessionEmail ? '/' : '/login'}>
+        <Link className="ui-btn ui-btn-ghost ui-btn-sm" href={sessionEmail ? '/' : '/login'}>
           {sessionEmail ? '返回首页' : '去登录'}
         </Link>
       </div>
