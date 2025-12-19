@@ -1,12 +1,20 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
 export default function LoginPage() {
   const router = useRouter()
+  const sp = useSearchParams()
+
+  const nextPath = useMemo(() => {
+    const raw = sp.get('next') || '/'
+    // 防止开放重定向：只允许站内相对路径
+    return raw.startsWith('/') ? raw : '/'
+  }, [sp])
+
   const supabase = useMemo(() => supabaseBrowser(), [])
 
   const [email, setEmail] = useState('')
@@ -22,14 +30,23 @@ export default function LoginPage() {
       setSessionEmail(data.session?.user?.email ?? null)
     })()
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((evt, session) => {
       setSessionEmail(session?.user?.email ?? null)
+
+      // 只在真正 SIGNED_IN 时跳转，避免残留 session/竞态导致回跳闭环
+      if (evt === 'SIGNED_IN' && session) {
+        // 这里保留你后面要做的 nextPath 逻辑时再替换
+        router.replace('/courses')
+        router.refresh()
+      }
     })
 
     return () => {
       sub.subscription.unsubscribe()
     }
-  }, [supabase])
+  }, [supabase, router])
+
+
 
   async function onLogin() {
     setStatus('')
@@ -52,7 +69,9 @@ export default function LoginPage() {
       }
 
       setStatus('登录成功，正在跳转...')
-      router.replace('/courses')
+      router.replace(nextPath)
+      router.refresh()
+
     } finally {
       setLoading(false)
     }

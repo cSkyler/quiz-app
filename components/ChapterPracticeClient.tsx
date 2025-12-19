@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
+import { updateUserQuestionStatus } from '@/lib/uqs'
 
 
 type QType = 'tf' | 'single' | 'multi' | 'blank' | 'short' | 'case'
@@ -113,6 +114,8 @@ const topLeftText = fromWrongbook ? '返回错题本' : (viewMode === 'quiz' ? '
   const [caseInput, setCaseInput] = useState('')
 
   const [result, setResult] = useState<null | { correct: boolean | null; msg: string }>(null)
+  const [selfEval, setSelfEval] = useState<null | 'green' | 'yellow' | 'red'>(null)
+
   const [masteryMap, setMasteryMap] = useState<Record<string, MasteryRow>>({})
 
 
@@ -276,7 +279,9 @@ useEffect(() => {
     setShortInput('')
     setCaseInput('')
     setResult(null)
+    setSelfEval(null)
   }
+  
 
   async function writeAttemptAndMastery(isCorrect: boolean, chosen: any) {
     if (!sessionOk) return
@@ -344,6 +349,122 @@ useEffect(() => {
       }
     }))
   }
+  async function applySelfEval(st: 'green' | 'yellow' | 'red') {
+    if (!q) return
+  
+    const { data: sess } = await supabase.auth.getSession()
+    const uid = sess.session?.user?.id
+    if (!uid) {
+      setStatus('ERROR: not logged in')
+      return
+    }
+  
+    // 1) 写 user_question_status（用于错题本/进度条）
+   // 主观题自评：直接写回 user_question_status（按你点的绿/黄/红落库）
+{
+  const now = new Date().toISOString()
+
+  const { data: prev, error: prevErr } = await supabase
+    .from('user_question_status')
+    .select('status, wrong_count, streak_correct')
+    .eq('user_id', uid)
+    .eq('question_id', q.id)
+    .maybeSingle()
+
+  if (!prevErr) {
+    const prevWrong = Number((prev as any)?.wrong_count ?? 0)
+    const prevStreak = Number((prev as any)?.streak_correct ?? 0)
+
+    const next = {
+      user_id: uid,
+      question_id: q.id,
+      status: st, // 直接用你点的 green/yellow/red
+      wrong_count: prevWrong,
+      streak_correct: prevStreak,
+      last_is_correct: null as boolean | null,
+      last_answer_at: now,
+    }
+
+    if (st === 'red') {
+      next.wrong_count = prevWrong + 1
+      next.streak_correct = 0
+      next.last_is_correct = false
+    } else if (st === 'yellow') {
+      next.wrong_count = prevWrong
+      next.streak_correct = 0
+      next.last_is_correct = null
+    } else {
+      // green：保证立刻是绿（避免 uqs 里 streak>=2 才绿导致“点绿却变黄”）
+      next.wrong_count = prevWrong
+      next.streak_correct = Math.max(2, prevStreak + 1)
+      next.last_is_correct = true
+    }
+
+    await supabase
+      .from('user_question_status')
+      .upsert([next], { onConflict: 'user_id,question_id' })
+  }
+}
+
+  
+    // 2) 同步写 mastery（用于你当前页面的 mode=wrong/掌握度 badge 等）
+    const { data: prev, error: mSelErr } = await supabase
+      .from('mastery')
+      .select('question_id,status,correct_streak,wrong_count')
+      .eq('user_id', uid)
+      .eq('question_id', q.id)
+      .maybeSingle()
+  
+    if (mSelErr) {
+      setStatus(`ERROR mastery read: ${mSelErr.message}`)
+      return
+    }
+  
+    const prevRow = (prev ?? null) as MasteryRow | null
+    let wrongCount = prevRow?.wrong_count ?? 0
+    let correctStreak = prevRow?.correct_streak ?? 0
+  
+    if (st === 'green') {
+      correctStreak = correctStreak + 1
+    } else {
+      correctStreak = 0
+    }
+  
+    if (st === 'red') wrongCount = wrongCount + 1
+  
+    const { error: mUpErr } = await supabase.from('mastery').upsert(
+      {
+        user_id: uid,
+        question_id: q.id,
+        status: st,
+        wrong_count: wrongCount,
+        correct_streak: correctStreak
+      },
+      { onConflict: 'user_id,question_id' }
+    )
+  
+    if (mUpErr) {
+      setStatus(`ERROR mastery upsert: ${mUpErr.message}`)
+      return
+    }
+  
+    setMasteryMap((prevMap) => ({
+      ...prevMap,
+      [q.id]: {
+        question_id: q.id,
+        status: st,
+        wrong_count: wrongCount,
+        correct_streak: correctStreak
+      }
+    }))
+  
+    setSelfEval(st)
+    setResult({
+      correct: null,
+      msg: st === 'green' ? '已自评：正确（绿）' : st === 'yellow' ? '已自评：不确定（黄）' : '已自评：错误（红）'
+    })
+  }
+  
 
   async function submit() {
     if (!q) return
@@ -355,6 +476,11 @@ useEffect(() => {
         return
       }
       setResult({ correct: null, msg: '已提交（自评）' })
+      // ✅ 新增：主观题先按 unsure 记为黄（后续做自评按钮再改成 correct/wrong）
+try {
+  await updateUserQuestionStatus(supabase, q.id, 'unsure')
+} catch {}
+
       if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
         ;(navigator as any).vibrate(12)
       }
@@ -368,6 +494,11 @@ useEffect(() => {
         return
       }
       setResult({ correct: null, msg: '已提交（自评）' })
+      // ✅ 新增：主观题先按 unsure 记为黄（后续做自评按钮再改成 correct/wrong）
+try {
+  await updateUserQuestionStatus(supabase, q.id, 'unsure')
+} catch {}
+
       return
     }
 
@@ -433,6 +564,14 @@ if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
 }
 
 await writeAttemptAndMastery(isCorrect, chosen)
+
+// ✅ 新增：写入 user_question_status（红/黄/绿）
+try {
+  await updateUserQuestionStatus(supabase, q.id, isCorrect ? 'correct' : 'wrong')
+} catch {
+  // 不影响做题主流程
+}
+
 
   }
 

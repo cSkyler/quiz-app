@@ -15,30 +15,117 @@ export default function CourseChaptersPage() {
   const supabase = useMemo(() => supabaseBrowser(), [])
   const [status, setStatus] = useState('Loading...')
   const [chapters, setChapters] = useState<Chapter[]>([])
-
+  type ChapterProgress = {
+    chapter_id: string
+    total: number
+    green: number
+    yellow: number
+    red: number
+    attempted: number
+    unseen: number
+  }
+  
+  type CourseProgress = {
+    course_id: string
+    total: number
+    green: number
+    yellow: number
+    red: number
+    attempted: number
+    unseen: number
+  }
+  
+  const [chapterProgMap, setChapterProgMap] = useState<Record<string, ChapterProgress>>({})
+  const [courseProg, setCourseProg] = useState<CourseProgress | null>(null)
+  
+  async function loadProgress(courseId: string) {
+    // 1) course summary
+    {
+      const { data } = await supabase
+        .from('v_progress_courses')
+        .select('course_id,total,green,yellow,red,attempted,unseen')
+        .eq('course_id', courseId)
+        .maybeSingle()
+      setCourseProg((data ?? null) as any)
+    }
+  
+    // 2) per chapter
+    {
+      const { data } = await supabase
+        .from('v_progress_chapters')
+        .select('chapter_id,total,green,yellow,red,attempted,unseen')
+        .eq('course_id', courseId)
+  
+      const map: Record<string, any> = {}
+      for (const r of data ?? []) map[r.chapter_id] = r
+      setChapterProgMap(map)
+    }
+  }
+  
+  function ProgressBar(p?: ChapterProgress | null) {
+    const total = p?.total ?? 0
+    const green = p?.green ?? 0
+    const yellow = p?.yellow ?? 0
+    const red = p?.red ?? 0
+    const unseen = total - (green + yellow + red)
+  
+    const pct = (x: number) => (total ? `${(x / total) * 100}%` : '0%')
+  
+    return (
+      <div style={{ marginTop: 10 }}>
+        <div className="ui-progress">
+          <div className="ui-progress__bar">
+            <div className="ui-progress__seg ui-progress__green" style={{ width: pct(green) }} />
+            <div className="ui-progress__seg ui-progress__yellow" style={{ width: pct(yellow) }} />
+            <div className="ui-progress__seg ui-progress__red" style={{ width: pct(red) }} />
+            <div className="ui-progress__seg ui-progress__unseen" style={{ width: pct(Math.max(0, unseen)) }} />
+          </div>
+        </div>
+  
+        <div className="ui-progress-meta">
+          <span>已做 {green + yellow + red}/{total || 0}</span>
+          <span>绿 {green} / 黄 {yellow} / 红 {red}</span>
+        </div>
+      </div>
+    )
+  }
+  
   useEffect(() => {
+    let cancelled = false
+  
     ;(async () => {
       setStatus('Loading...')
       if (!courseId) {
         setStatus('ERROR: courseId missing')
         return
       }
-
+  
       const { data, error } = await supabase
         .from('chapters')
         .select('id,title,order_index')
         .eq('course_id', courseId)
         .order('order_index', { ascending: true })
-
+  
+      if (cancelled) return
+  
       if (error) {
         setStatus(`ERROR: ${error.message}`)
         return
       }
-
+  
       setChapters((data ?? []) as Chapter[])
-      setStatus('OK')
+  
+      // ✅ 新增：拉取课程/章节进度
+      await loadProgress(courseId)
+  
+      if (!cancelled) setStatus('OK')
     })()
+  
+    return () => {
+      cancelled = true
+    }
   }, [supabase, courseId])
+  
 
   return (
     <main className="ui-container">
@@ -48,6 +135,25 @@ export default function CourseChaptersPage() {
       </div>
 
       <div className="ui-status">{status}</div>
+      {courseProg ? (
+  <div className="ui-card" style={{ marginTop: 12 }}>
+    <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <h2 className="ui-title" style={{ fontSize: 16, margin: 0 }}>本课程进度</h2>
+      <span className="ui-meta">已做 {courseProg.attempted}/{courseProg.total}</span>
+    </div>
+
+    {ProgressBar({
+      chapter_id: 'course',
+      total: courseProg.total,
+      green: courseProg.green,
+      yellow: courseProg.yellow,
+      red: courseProg.red,
+      attempted: courseProg.attempted,
+      unseen: courseProg.unseen
+    })}
+  </div>
+) : null}
+
 
       <div className="ui-card">
   {chapters.length === 0 ? (
@@ -75,7 +181,7 @@ export default function CourseChaptersPage() {
     开始
   </Link>
 </div>
-
+{ProgressBar(chapterProgMap[ch.id] ?? null)}
 
           </div>
         ))}
@@ -95,7 +201,11 @@ export default function CourseChaptersPage() {
             {chapters.map((ch) => (
               <tr key={ch.id}>
                 <td>{ch.order_index}</td>
-                <td style={{ fontWeight: 700 }}>{ch.title}</td>
+                <td style={{ fontWeight: 700 }}>
+  <div>{ch.title}</div>
+  {ProgressBar(chapterProgMap[ch.id] ?? null)}
+</td>
+
                 <td>
                   <Link
                     className="ui-btn"

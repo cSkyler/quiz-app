@@ -94,7 +94,7 @@ if (sErr) {
         <div>
           <h1 className="ui-title">MAPer 学习平台</h1>
           <p className="ui-subtitle">
-            {sessionEmail ? `已登录：${sessionEmail}` : '游客模式：可刷题，但不保存云端进度'}
+          {sessionEmail ? `已登录：${sessionEmail}` : '游客模式：仅可浏览首页；登录后才能刷题'}
           </p>
         </div>
 
@@ -179,12 +179,22 @@ if (sErr) {
               {c.description ? <div className="ui-subtitle">{c.description}</div> : null}
             </td>
             <td className="ui-row" style={{ gap: 10 }}>
-              <Link className="ui-btn ui-btn-primary" href={`/courses/${c.id}`} style={{ textDecoration: 'none' }}>
-                进入课程
-              </Link>
-              <Link className="ui-btn" href={`/courses/${c.id}/chapters`} style={{ textDecoration: 'none' }}>
-                章节
-              </Link>
+            <Link
+  className="ui-btn ui-btn-primary"
+  href={sessionEmail ? `/courses/${c.id}` : `/login?next=${encodeURIComponent(`/courses/${c.id}`)}`}
+  style={{ textDecoration: 'none' }}
+>
+  进入课程
+</Link>
+
+<Link
+  className="ui-btn"
+  href={sessionEmail ? `/courses/${c.id}/chapters` : `/login?next=${encodeURIComponent(`/courses/${c.id}/chapters`)} `}
+  style={{ textDecoration: 'none' }}
+>
+  章节
+</Link>
+
             </td>
           </tr>
         ))}

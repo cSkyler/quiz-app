@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import MobileAvatarFab from '@/components/MobileAvatarFab'
+import DesktopProfileEntry from '@/components/DesktopProfileEntry'
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +29,14 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+                        <MobileAvatarFab />
+                        <DesktopProfileEntry />
+
+        <div className="app-scroll">
+          {children}
+        </div>
+
+
       </body>
     </html>
   );

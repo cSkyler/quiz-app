@@ -32,19 +32,30 @@
   --ok:#5ad7a6;
   --warn:#ffd166;
 }
+/* ===== App Background: one unified canvas (no white overscroll) ===== */
+:root{
+  /* 统一的整页渐变背景：html/body 用同一套，回弹不会露白 */
+  --app-gradient:
+    radial-gradient(1200px 600px at 20% 10%, rgba(27, 47, 77, 0.329), transparent 60%),
+    radial-gradient(900px 500px at 80% 30%, rgba(137, 22, 182, 0.527), transparent 55%),
+    linear-gradient(180deg, #3167a5 0%, #120829 55%, #061122 100%);
+}
+
+html, body {
+  height: 100%;
+  background: var(--app-gradient);
+}
 
 body{
   margin: 0;
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
 
-  /* 纯渐变背景：不会出现一条条黑线 */
-  background:
-    radial-gradient(1200px 600px at 20% 10%, rgba(27, 47, 77, 0.329), transparent 60%),
-    radial-gradient(900px 500px at 80% 30%, rgba(137, 22, 182, 0.527), transparent 55%),
-    linear-gradient(180deg, #3167a5 0%, #120829 55%, #061122 100%);
-
+  background: var(--app-gradient);
   background-attachment: fixed;
+
+  /* 关键：body 不滚动，避免回弹露出默认背景层 */
+  overflow: hidden;
 }
 
 .ui-container{
@@ -191,7 +202,11 @@ body{
 }
 /* 表格外层允许横向滚动，避免窄屏挤成竖排字 */
 .ui-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.ui-table { min-width: 680px; }
+
+/* 只在桌面端要求表格最小宽度；移动端不强撑宽 */
+@media (min-width: 768px) {
+  .ui-table { min-width: 680px; }
+}
 
 /* 两行截断：移动端标题/描述更像 App */
 .ui-clamp-2{
@@ -282,9 +297,14 @@ body{
 .ui-body + .ui-body { margin-top: 10px; }
 /* Mobile: 禁止横向滚动（兜底，避免任何页面出现左右滑动） */
 @media (max-width: 767px) {
+  /* 只禁止“整页”横向滚动，避免页面跑偏 */
   html, body { overflow-x: hidden; }
-  .ui-container { overflow-x: hidden; }
+  .app-scroll { overflow-x: hidden; }
+
+  /* 但允许指定的横向滚动区域（例如管理端按钮行） */
+  .ui-hscroll { overflow-x: auto !important; }
 }
+
 /* Button helper: 移动端按钮占满宽度，避免挤压导致横向滚动 */
 .ui-btn-block {
   width: 100%;
@@ -527,4 +547,157 @@ body{
 .ui-textarea:focus{
   border-color: rgba(140,190,255,0.26);
   box-shadow: 0 0 0 3px rgba(140,190,255,0.12);
+}
+
+/* Mobile avatar floating button (top-right) */
+.mobile-avatar-fab {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.10);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.mobile-avatar-fab__inner {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Only show on mobile */
+@media (min-width: 768px) {
+  .mobile-avatar-fab {
+    display: none;
+  }
+}
+.mobile-avatar-fab {
+  touch-action: none; /* 关键：允许在移动端拖动，不触发页面滚动 */
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.mobile-avatar-fab.is-pressed {
+  transform: scale(1.18);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+  background: rgba(255, 255, 255, 0.98);
+}
+/* horizontal scroll container for mobile admin rows */
+.ui-hscroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+
+  /* 关键：允许横向拖动手势 */
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+}
+
+
+/* 确保内容宽度可超出从而产生横向滚动 */
+.ui-hscroll > * {
+  width: max-content;
+  max-width: none;
+}
+
+
+.ui-hscroll::-webkit-scrollbar {
+  height: 6px;
+}
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden; /* 关键：避免 body 回弹露出默认白底 */
+}
+
+/* 全局滚动容器：回弹发生在这里，背景是“页面自身背景” */
+.app-scroll {
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+
+  /* 关键：用你页面本来就用的背景色（不是上下固定色块，而是统一背景） */
+  background: transparent; /* 透明：直接透出 body 的统一渐变背景 */
+
+}
+/* Mobile admin: extra small buttons */
+.ui-btn-xs{
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Mobile admin: chapter title wrap and shrink gracefully */
+.ui-admin-chapter-title{
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 800;
+  color: rgba(255,255,255,0.92);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+/* Desktop profile entry (top-right) */
+.desktop-profile-entry {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 9999;
+  gap: 8px;
+}
+
+/* 只在桌面端显示，避免和移动端悬浮圆圈重复 */
+@media (max-width: 767px) {
+  .desktop-profile-entry {
+    display: none !important;
+  }
+}
+
+/* 屏幕较窄的桌面：隐藏文字，只留图标，避免遮挡 */
+@media (max-width: 980px) {
+  .desktop-profile-entry__text {
+    display: none;
+  }
+}
+/* Progress bar (green/yellow/red/unseen) */
+.ui-progress {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.ui-progress__bar {
+  height: 100%;
+  display: flex;
+}
+
+.ui-progress__seg { height: 100%; }
+
+.ui-progress__green  { background: rgba(80, 200, 120, 0.70); }
+.ui-progress__yellow { background: rgba(255, 200, 80, 0.70); }
+.ui-progress__red    { background: rgba(255, 90, 90, 0.70); }
+.ui-progress__unseen { background: rgba(255,255,255,0.12); }
+
+.ui-progress-meta{
+  margin-top: 8px;
+  display:flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: rgba(255,255,255,0.62);
 }
