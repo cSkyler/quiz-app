@@ -331,8 +331,9 @@ export default function AdminPage() {
 
       if (cancelled) return
       setIsPrivileged(true)
-      setRole(profile?.role === 'admin' || profile?.role === 'owner' ? profile.role : null)
-      setStatus('OK: admin')
+      const r = (profile?.role === 'admin' || profile?.role === 'owner') ? (profile.role as any) : null
+      setRole(r)
+      setStatus(`OK: ${r ?? 'privileged'}`)
 
       await fetchSiteSettings()
       await loadCourses()
@@ -389,9 +390,12 @@ export default function AdminPage() {
         </div>
 
         <div className="ui-row" style={{ gap: 10 }}>
-          <Link className="ui-btn ui-btn-ghost ui-btn-sm" href="/admin/users" style={{ textDecoration: 'none' }}>
-            用户管理
-          </Link>
+        {role === 'owner' ? (
+  <Link className="ui-btn ui-btn-ghost ui-btn-sm" href="/admin/users" style={{ textDecoration: 'none' }}>
+    用户管理
+  </Link>
+) : null}
+
 
           <Link className="ui-link" href="/">🏠 首页</Link>
           <Link className="ui-link" href="/courses">课程</Link>
@@ -553,6 +557,56 @@ export default function AdminPage() {
       </div>
     </>
   )}
+</div>
+{/* 公告 & 更新记录（站点设置） */}
+<div className="ui-card" style={{ marginTop: 12 }}>
+  <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+    <div>
+      <div className="ui-badge">站点设置</div>
+      <div style={{ marginTop: 8, fontSize: 16, fontWeight: 700 }}>公告与更新</div>
+    </div>
+    <span className="ui-badge">{role ?? '-'}</span>
+  </div>
+
+  <div className="ui-col" style={{ marginTop: 12, maxWidth: 900 }}>
+    <div className="ui-meta">公告（首页展示）</div>
+    <textarea
+      className="ui-textarea"
+      rows={5}
+      value={announcement}
+      onChange={(e) => setAnnouncement(e.target.value)}
+      disabled={role !== 'owner'}
+      placeholder="例如：1）平台免费开放 2）当前迭代中 3）异常可反馈"
+    />
+
+    <div className="ui-meta" style={{ marginTop: 12 }}>更新记录（可选）</div>
+    <textarea
+      className="ui-textarea"
+      rows={6}
+      value={changelog}
+      onChange={(e) => setChangelog(e.target.value)}
+      disabled={role !== 'owner'}
+      placeholder="例如：1）新增错题本 2）新增目录模式 3）新增进度条"
+    />
+
+    <div className="ui-row" style={{ marginTop: 12, gap: 10, flexWrap: 'wrap' }}>
+      <button
+        className="ui-btn ui-btn-primary"
+        onClick={saveSiteSettings}
+        disabled={saving || role !== 'owner'}
+      >
+        {saving ? '保存中...' : '保存公告/更新'}
+      </button>
+
+      <button className="ui-btn" onClick={fetchSiteSettings}>
+        重新加载
+      </button>
+
+      {role !== 'owner' ? (
+        <span className="ui-subtitle">当前为只读：只有 owner 可以修改。</span>
+      ) : null}
+    </div>
+  </div>
 </div>
 
 {/* 新增课程（放后面） */}

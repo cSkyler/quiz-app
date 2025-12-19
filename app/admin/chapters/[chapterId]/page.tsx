@@ -42,7 +42,8 @@ export default function ChapterQuestionsPage() {
   const supabase = useMemo(() => supabaseBrowser(), [])
 
   const [status, setStatus] = useState('Checking auth...')
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [isPrivileged, setIsPrivileged] = useState(false) // admin 或 owner
+
 
   const [chapter, setChapter] = useState<Chapter | null>(null)
   const [questions, setQuestions] = useState<QuestionRow[]>([])
@@ -133,7 +134,7 @@ export default function ChapterQuestionsPage() {
       const user = sess.session?.user
       if (!user) {
         setStatus('Not logged in. Go to /login first.')
-        setIsAdmin(false)
+        setIsPrivileged(false)
         setLoading(false)
         return
       }
@@ -146,21 +147,23 @@ export default function ChapterQuestionsPage() {
 
       if (pErr) {
         setStatus(`ERROR reading profile: ${pErr.message}`)
-        setIsAdmin(false)
+        setIsPrivileged(false)
         setLoading(false)
         return
       }
 
-      if (profile?.role !== 'admin') {
-        setStatus(`Logged in as ${user.email}, role=${profile?.role}. Not admin.`)
-        setIsAdmin(false)
+      const ok = profile?.role === 'admin' || profile?.role === 'owner'
+      if (!ok) {
+        setStatus(`Logged in as ${user.email}, role=${profile?.role}. Not authorized.`)
+        setIsPrivileged(false)
         setLoading(false)
         return
       }
-
+      
       if (cancelled) return
-      setIsAdmin(true)
-      setStatus('OK: admin')
+      setIsPrivileged(true)
+      setStatus(`OK: ${profile?.role}`)
+      
 
       // chapter
       const { data: c, error: cErr } = await supabase
@@ -409,7 +412,7 @@ export default function ChapterQuestionsPage() {
     }
   }
 
-  if (!isAdmin) {
+  if (!isPrivileged) {
     return (
       <main className="ui-container">
         <div className="ui-topbar">
