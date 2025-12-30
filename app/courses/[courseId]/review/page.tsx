@@ -5,15 +5,8 @@ import { useParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
-type Chapter = { id: string; title: string; order_index: number }
-type ReviewRow = { chapter_id: string; level: number }
+type Chapter = { id: string; title: string; order_index: number; provided_by: string | null }
 
-function levelText(level?: number | null) {
-  if (level === 2) return '熟知'
-  if (level === 1) return '有印象'
-  if (level === 0) return '不知道'
-  return '未评价'
-}
 
 export default function ReviewHomePage() {
   const params = useParams() as { courseId?: string | string[] }
@@ -24,7 +17,7 @@ export default function ReviewHomePage() {
   const [status, setStatus] = useState('Loading...')
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [preparedSet, setPreparedSet] = useState<Set<string>>(new Set())
-  const [levels, setLevels] = useState<Record<string, number>>({})
+
 
   useEffect(() => {
     ;(async () => {
@@ -36,7 +29,7 @@ export default function ReviewHomePage() {
       // 1) 章节列表
       const { data: chs, error: chErr } = await supabase
         .from('chapters')
-        .select('id,title,order_index')
+        .select('id,title,order_index,provided_by')
         .eq('course_id', courseId)
         .order('order_index', { ascending: true })
 
@@ -56,21 +49,7 @@ export default function ReviewHomePage() {
       const set = new Set<string>((notes ?? []).map((x: any) => x.chapter_id).filter(Boolean))
       setPreparedSet(set)
 
-      // 3) 当前用户的自评等级
-      const { data: sess } = await supabase.auth.getSession()
-      const uid = sess.session?.user?.id
-      if (uid && list.length > 0) {
-        const ids = list.map((c) => c.id)
-        const { data: prog } = await supabase
-          .from('chapter_review_progress')
-          .select('chapter_id,level')
-          .eq('user_id', uid)
-          .in('chapter_id', ids)
-
-        const m: Record<string, number> = {}
-        ;((prog ?? []) as ReviewRow[]).forEach((r) => (m[r.chapter_id] = r.level))
-        setLevels(m)
-      }
+   
 
       setStatus('OK')
     })()
@@ -97,7 +76,6 @@ export default function ReviewHomePage() {
         <div style={{ marginTop: 10 }}>
           {chapters.map((c) => {
             const prepared = preparedSet.has(c.id)
-            const lv = levels[c.id]
             return (
               <Link
                 key={c.id}
@@ -120,8 +98,9 @@ export default function ReviewHomePage() {
                 </div>
 
                 <div className="ui-subtitle" style={{ marginTop: 6 }}>
-                  自评：{levelText(lv)}
-                </div>
+  Provided by {c.provided_by?.trim() ? c.provided_by.trim() : 'MAP contributors'}
+</div>
+
               </Link>
             )
           })}
