@@ -47,6 +47,25 @@ function sameSet(a: string[], b: string[]) {
   const B = [...new Set(b)].sort().join('|')
   return A === B
 }
+function getSubjectiveReference(answer: any): string {
+  if (!answer) return ''
+
+  // ✅ 你现在数据库主格式：{ reference: "..." }
+  if (typeof answer.reference === 'string' && answer.reference.trim()) return answer.reference.trim()
+
+  // ✅ 兼容旧格式：{ text: "..." }
+  if (typeof answer.text === 'string' && answer.text.trim()) return answer.text.trim()
+
+  // ✅ 兼容更旧格式：{ key_points: ["...", "..."] }
+  if (Array.isArray(answer.key_points) && answer.key_points.length > 0) {
+    return answer.key_points
+      .map((x: any) => String(x ?? '').trim())
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  return ''
+}
 
 export default function ChapterPracticeClient(props: { chapterId?: string; courseId?: string }) {
   const route = useParams() as { courseId?: string | string[]; chapterId?: string | string[] }
@@ -960,11 +979,16 @@ try {
                 {q.explanation ? `\n解析：${q.explanation}` : ''}
 
                 {(q.type === 'short' || q.type === 'case') && (
-                  <>
-                    {q.type === 'short' ? `\n\n你的回答：\n${shortInput}` : `\n\n你的回答：\n${caseInput}`}
-                    {q.answer?.text ? `\n\n参考答案：\n${q.answer.text}` : ''}
-                  </>
-                )}
+  <>
+    {q.type === 'short' ? `\n\n你的回答：\n${shortInput}` : `\n\n你的回答：\n${caseInput}`}
+
+    {(() => {
+      const ref = getSubjectiveReference(q.answer)
+      return ref ? `\n\n参考答案：\n${ref}` : ''
+    })()}
+  </>
+)}
+
 
                 {!sessionOk ? '\n提示：未登录，本次不保存进度/错题。' : ''}
               </div>
