@@ -5,9 +5,11 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 import { updateUserQuestionStatus } from '@/lib/uqs'
+import OrderQuestion, { type OrderOption, type OrderAnswer } from '@/components/OrderQuestion'
 
 
-type QType = 'tf' | 'single' | 'multi' | 'blank' | 'short' | 'case'
+type QType = 'tf' | 'single' | 'multi' | 'blank' | 'short' | 'case' | 'order'
+
 
 type Q = {
   id: string
@@ -545,6 +547,10 @@ try {
       chosen = { pick: pickSingle }
     }
 
+    // order 题型不走 submit()：由渲染区的 <OrderQuestion /> 内部提交并回调 onSubmit
+
+    
+
     if (q.type === 'multi') {
       const picked = (['A', 'B', 'C', 'D'] as const).filter((k) => !!pickMulti[k])
       if (picked.length === 0) {
@@ -842,6 +848,35 @@ try {
             )}
 
             <h2 className="ui-title" style={{ fontSize: 18, marginTop: 12 }}>{q.stem}</h2>
+            {/* ORDER */}
+{q.type === 'order' && (
+  <OrderQuestion
+    stem={q.stem}
+    options={(q.options ?? []) as unknown as OrderOption[]}
+    answer={(q.answer ?? {}) as unknown as OrderAnswer}
+    explanation={q.explanation ?? null}
+    layout="row"
+    onSubmit={async ({ isCorrect, userOrder, correctOrder }) => {
+      // 防止重复落库（用户反复点提交）
+      if (result) return
+
+      setResult({ correct: isCorrect, msg: isCorrect ? '正确' : '错误' })
+
+      // 震动反馈（移动端）
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        ;(navigator as any).vibrate(isCorrect ? 18 : [25, 40, 25])
+      }
+
+      const chosen = { user_order: userOrder, correct_order: correctOrder }
+      await writeAttemptAndMastery(isCorrect, chosen)
+
+      try {
+        await updateUserQuestionStatus(supabase, q.id, isCorrect ? 'correct' : 'wrong')
+      } catch {}
+    }}
+  />
+)}
+
 
             {/* TF */}
             {q.type === 'tf' && (
@@ -961,17 +996,21 @@ try {
               </div>
             )}
 
-            <div className="ui-row" style={{ marginTop: 12 }}>
-              <button className="ui-btn ui-btn-primary" onClick={submit} disabled={!!result}>
-                提交
-              </button>
-              <button className="ui-btn" onClick={prev} disabled={idx === 0}>
-                上一题
-              </button>
-              <button className="ui-btn" onClick={next} disabled={idx === filteredList.length - 1}>
-                下一题
-              </button>
-            </div>
+<div className="ui-row" style={{ marginTop: 12 }}>
+  {q.type === 'order' ? null : (
+    <button className="ui-btn ui-btn-primary" onClick={submit} disabled={!!result}>
+      提交
+    </button>
+  )}
+
+  <button className="ui-btn" onClick={prev} disabled={idx === 0}>
+    上一题
+  </button>
+  <button className="ui-btn" onClick={next} disabled={idx === filteredList.length - 1}>
+    下一题
+  </button>
+</div>
+
 
             {result && (
               <div className="ui-status" style={{ marginTop: 12, whiteSpace: 'pre-wrap' }}>

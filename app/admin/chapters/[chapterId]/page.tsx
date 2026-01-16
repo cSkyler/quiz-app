@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
 type Chapter = { id: string; title: string; order_index: number }
-type QType = 'tf' | 'single' | 'multi' | 'blank' | 'short' | 'case'
+type QType = 'tf' | 'single' | 'multi' | 'blank' | 'short' | 'case' | 'order'
 type QuestionRow = { id: string; type: QType; stem: string; created_at: string }
 
 type Option = { key: 'A' | 'B' | 'C' | 'D'; text: string }
@@ -325,9 +325,10 @@ export default function ChapterQuestionsPage() {
         const stem = (it?.stem ?? '').toString().trim()
         const explanation = (it?.explanation ?? '').toString().trim() || null
 
-        if (!type || !['tf', 'single', 'multi', 'blank', 'short', 'case'].includes(type)) {
-          throw new Error(`第 ${idx + 1} 条：type 必须是 tf/single/multi/blank/short/case`)
+        if (!type || !['tf', 'single', 'multi', 'blank', 'short', 'case', 'order'].includes(type)) {
+          throw new Error(`第 ${idx + 1} 条：type 必须是 tf/single/multi/blank/short/case/order`)
         }
+        
         if (!stem) throw new Error(`第 ${idx + 1} 条：stem 不能为空`)
 
         if (type === 'tf') {
@@ -336,6 +337,9 @@ export default function ChapterQuestionsPage() {
           return { chapter_id: chapterId, type, stem, options: null, answer: { correct: c }, explanation }
         }
 
+
+
+        
         if (type === 'single') {
           const opts = it?.options
           const correct = it?.answer?.correct
@@ -351,7 +355,51 @@ export default function ChapterQuestionsPage() {
           if (!textsOk) throw new Error(`第 ${idx + 1} 条：single A-D 文本都不能为空`)
           return { chapter_id: chapterId, type, stem, options: opts, answer: { correct }, explanation }
         }
-
+        if (type === 'order') {
+          const opts = it?.options
+          const correctOrder = it?.answer?.correct_order
+          const strict = it?.answer?.strict !== false // 默认严格判分
+        
+          if (!Array.isArray(opts) || opts.length < 2) {
+            throw new Error(`第 ${idx + 1} 条：order options 必须是长度>=2数组`)
+          }
+        
+          // 规范化 options：确保每个卡片都有 id/text，meta 可选
+          const normalized = opts.map((o: any, i: number) => {
+            const id = (o?.id ?? `r${i + 1}`).toString().trim()
+            const text = (o?.text ?? '').toString().trim()
+            if (!id) throw new Error(`第 ${idx + 1} 条：order options[${i}] 缺少 id`)
+            if (!text) throw new Error(`第 ${idx + 1} 条：order options[${i}] 缺少 text`)
+            return { id, text, meta: o?.meta ?? null }
+          })
+        
+          // id 必须唯一
+          const ids = normalized.map((x: any) => x.id)
+          const idSet = new Set(ids)
+          if (idSet.size !== ids.length) {
+            throw new Error(`第 ${idx + 1} 条：order options.id 必须唯一`)
+          }
+        
+          // correct_order 必须存在且等长，并且每个 id 都在 options 里
+          if (!Array.isArray(correctOrder) || correctOrder.length !== normalized.length) {
+            throw new Error(`第 ${idx + 1} 条：order answer.correct_order 必须是与 options 等长的 id 数组`)
+          }
+          for (const id of correctOrder) {
+            if (!idSet.has((id ?? '').toString())) {
+              throw new Error(`第 ${idx + 1} 条：order answer.correct_order 包含不存在的 id: ${id}`)
+            }
+          }
+        
+          return {
+            chapter_id: chapterId,
+            type,
+            stem,
+            options: normalized,
+            answer: { correct_order: correctOrder, strict },
+            explanation,
+          }
+        }
+        
         if (type === 'multi') {
           const opts = it?.options
           const correctArr = it?.answer?.correct
@@ -609,7 +657,7 @@ export default function ChapterQuestionsPage() {
           <div className="ui-col" style={{ marginTop: 10 }}>
             <textarea
               className="ui-textarea"
-              placeholder='粘贴 JSON 数组。支持 tf/single/multi/blank/short/case。'
+              placeholder='粘贴 JSON 数组。支持 tf/single/multi/blank/short/case/order。'
               value={bulkJson}
               onChange={(e) => setBulkJson(e.target.value)}
               rows={10}
