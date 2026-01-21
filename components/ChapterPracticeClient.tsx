@@ -963,7 +963,7 @@ try {
                   disabled={!!result}
                 />
                 <p className="ui-subtitle" style={{ marginTop: 8 }}>
-                  说明：按“标准答案”进行匹配（你可以在 q.answer.correct 里放字符串或字符串数组）。
+                  说明：不同答案之间用一个空格隔开。
                 </p>
               </div>
             )}
