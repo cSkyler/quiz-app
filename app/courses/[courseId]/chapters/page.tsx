@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
+import { loadAllLearningProgress, type ChapterProgress, type CourseProgress } from '@/lib/learningProgress'
 
 type Chapter = { id: string; title: string; order_index: number }
 
@@ -15,52 +16,17 @@ export default function CourseChaptersPage() {
   const supabase = useMemo(() => supabaseBrowser(), [])
   const [status, setStatus] = useState('Loading...')
   const [chapters, setChapters] = useState<Chapter[]>([])
-  type ChapterProgress = {
-    chapter_id: string
-    total: number
-    green: number
-    yellow: number
-    red: number
-    attempted: number
-    unseen: number
-  }
-  
-  type CourseProgress = {
-    course_id: string
-    total: number
-    green: number
-    yellow: number
-    red: number
-    attempted: number
-    unseen: number
-  }
-  
   const [chapterProgMap, setChapterProgMap] = useState<Record<string, ChapterProgress>>({})
   const [courseProg, setCourseProg] = useState<CourseProgress | null>(null)
   
-  async function loadProgress(courseId: string) {
-    // 1) course summary
-    {
-      const { data } = await supabase
-        .from('v_progress_courses')
-        .select('course_id,total,green,yellow,red,attempted,unseen')
-        .eq('course_id', courseId)
-        .maybeSingle()
-      setCourseProg((data ?? null) as any)
-    }
-  
-    // 2) per chapter
-    {
-      const { data } = await supabase
-        .from('v_progress_chapters')
-        .select('chapter_id,total,green,yellow,red,attempted,unseen')
-        .eq('course_id', courseId)
-  
-      const map: Record<string, any> = {}
-      for (const r of data ?? []) map[r.chapter_id] = r
-      setChapterProgMap(map)
-    }
-  }
+  const loadProgress = useCallback(async (courseId: string) => {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const user = sessionData.session?.user
+    if (!user) return
+    const { courseProgress, chapterProgress } = await loadAllLearningProgress(supabase, user.id)
+    setCourseProg(courseProgress[courseId] ?? null)
+    setChapterProgMap(chapterProgress)
+  }, [supabase])
   
   function ProgressBar(p?: ChapterProgress | null) {
     const total = p?.total ?? 0
@@ -124,7 +90,7 @@ export default function CourseChaptersPage() {
     return () => {
       cancelled = true
     }
-  }, [supabase, courseId])
+  }, [supabase, courseId, loadProgress])
   
 
   return (

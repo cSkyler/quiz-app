@@ -4,14 +4,15 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowRight, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Megaphone, RotateCcw, Target } from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
+import { daysUntilExam } from '@/lib/exam'
+import { loadAllLearningProgress, type CourseProgress } from '@/lib/learningProgress'
 
 type Course = { id: string; title: string; description: string | null; order_index: number }
-type Progress = { course_id: string; total: number; green: number; yellow: number; red: number; attempted: number; unseen: number }
 
 export default function DashboardPage() {
   const supabase = useMemo(() => supabaseBrowser(), [])
   const [courses, setCourses] = useState<Course[]>([])
-  const [progress, setProgress] = useState<Record<string, Progress>>({})
+  const [progress, setProgress] = useState<Record<string, CourseProgress>>({})
   const [wrongCount, setWrongCount] = useState(0)
   const [todayCount, setTodayCount] = useState(0)
   const [nickname, setNickname] = useState('同学')
@@ -29,16 +30,13 @@ export default function DashboardPage() {
       setCourses((courseRows ?? []) as Course[])
       setAnnouncement(announcementRow?.value?.trim() ?? '')
       if (user) {
-        const [{ data: progressRows }, { count: wrong }, { count: today }, { data: profile }] = await Promise.all([
-          supabase.from('v_progress_courses').select('course_id,total,green,yellow,red,attempted,unseen').eq('user_id', user.id),
-          supabase.from('user_question_status').select('question_id', { count: 'exact', head: true }).eq('user_id', user.id).in('status', ['wrong','unsure']),
+        const [{ courseProgress }, { count: today }, { data: profile }] = await Promise.all([
+          loadAllLearningProgress(supabase, user.id),
           supabase.from('attempts').select('id', { count: 'exact', head: true }).eq('user_id', user.id).gte('created_at', new Date(new Date().setHours(0,0,0,0)).toISOString()),
           supabase.from('user_profiles').select('nickname').eq('user_id', user.id).maybeSingle(),
         ])
-        const map: Record<string, Progress> = {}
-        for (const row of progressRows ?? []) map[row.course_id] = row as Progress
-        setProgress(map)
-        setWrongCount(wrong ?? 0)
+        setProgress(courseProgress)
+        setWrongCount(Object.values(courseProgress).reduce((sum, row) => sum + row.red + row.yellow, 0))
         setTodayCount(today ?? 0)
         setNickname(profile?.nickname?.trim() || user.email?.split('@')[0] || '同学')
       }
@@ -50,12 +48,13 @@ export default function DashboardPage() {
   const totalGreen = Object.values(progress).reduce((sum, item) => sum + (item.green ?? 0), 0)
   const accuracy = totalAttempted ? Math.round((totalGreen / totalAttempted) * 100) : 0
   const primaryCourse = courses[0]
+  const examDays = daysUntilExam()
 
   return (
     <main className="workspace-page">
       <div className="workspace-heading"><div><span className="page-eyebrow">学习概览</span><h1>上午好，{nickname}</h1><p>今天从一项明确的任务开始，保持稳定的复习节奏。</p></div><Link className="button button--primary" href={primaryCourse ? `/courses/${primaryCourse.id}` : '/courses'}>继续学习 <ArrowRight size={17} /></Link></div>
 
-      <section className="exam-strip"><div className="exam-strip__date"><CalendarDays size={20} /><span><small>本学期考试</small><strong>2026年7月19日</strong></span></div><div className="exam-strip__message"><strong>距离考试还有 8 天</strong><span>建议优先完成未练习章节，再集中复习红色和黄色题目。</span></div><Link href="/courses">查看冲刺计划 <ArrowRight size={16} /></Link></section>
+      <section className="exam-strip"><div className="exam-strip__date"><CalendarDays size={20} /><span><small>本学期考试</small><strong>2026年7月19日</strong></span></div><div className="exam-strip__message"><strong>距离考试还有 {examDays} 天</strong><span>建议优先完成未练习章节，再集中复习红色和黄色题目。</span></div><Link href="/courses">查看冲刺计划 <ArrowRight size={16} /></Link></section>
       {announcement ? <section className="announcement-strip"><Megaphone size={17} /><strong>平台公告</strong><p>{announcement}</p></section> : null}
 
       <section className="metric-grid"><article><span className="metric-icon"><CheckCircle2 size={19} /></span><div><small>今日答题</small><strong>{loading ? '—' : todayCount}</strong><em>保持连续学习</em></div></article><article><span className="metric-icon is-teal"><Target size={19} /></span><div><small>综合掌握率</small><strong>{loading ? '—' : `${accuracy}%`}</strong><em>以已练习题目计算</em></div></article><article><span className="metric-icon is-amber"><RotateCcw size={19} /></span><div><small>待复习题目</small><strong>{loading ? '—' : wrongCount}</strong><em>错误与不确定题目</em></div></article><article><span className="metric-icon is-neutral"><Clock3 size={19} /></span><div><small>累计已练习</small><strong>{loading ? '—' : totalAttempted}</strong><em>跨课程同步记录</em></div></article></section>

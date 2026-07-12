@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -19,15 +19,21 @@ import {
 } from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 import ChapterPracticeClient from '@/components/ChapterPracticeClient'
+import {
+  buildLearningProgress,
+  loadQuestionStatuses,
+  normalizeLearningStatus,
+  type ChapterProgress,
+  type CourseProgress,
+  type QuestionStatusRow,
+} from '@/lib/learningProgress'
 
 type Course = { id: string; title: string; description: string | null }
 type Brief = { exam_structure: string | null; assignments: string | null; study_tips: string | null; exam_date: string | null }
-type CourseProgress = { total: number; green: number; yellow: number; red: number; attempted: number; unseen: number }
 type Chapter = { id: string; title: string; order_index: number; provided_by: string | null }
-type ChapterProgress = { chapter_id: string; total: number; green: number; yellow: number; red: number; attempted: number; unseen: number }
 type QuestionMeta = { id: string; chapter_id: string; type: string; stem: string }
 type ReviewNote = { chapter_id: string; content: string }
-type WrongStatus = { question_id: string; status: 'wrong' | 'unsure'; wrong_count: number | null }
+type WrongStatus = { question_id: string; status: 'red' | 'yellow'; wrong_count: number | null }
 type Resume = { chapter_id: string; last_question_id: string | null }
 type ViewKey = 'overview' | 'chapters' | 'review' | 'wrong' | 'practice'
 
@@ -105,50 +111,73 @@ export default function CoursePage() {
       const questionRequest = chapterIds.length
         ? supabase.from('questions').select('id,chapter_id,type,stem').in('chapter_id', chapterIds)
         : Promise.resolve({ data: [] })
-      const courseProgressRequest = user
-        ? supabase.from('v_progress_courses').select('total,green,yellow,red,attempted,unseen').eq('user_id', user.id).eq('course_id', courseId).maybeSingle()
-        : Promise.resolve({ data: null })
-      const chapterProgressRequest = user && chapterIds.length
-        ? supabase.from('v_progress_chapters').select('chapter_id,total,green,yellow,red,attempted,unseen').eq('user_id', user.id).in('chapter_id', chapterIds)
-        : Promise.resolve({ data: [] })
-
-      const [{ data: questionRows }, { data: courseProgressRow }, { data: chapterProgressRows }] = await Promise.all([
-        questionRequest,
-        courseProgressRequest,
-        chapterProgressRequest,
-      ])
+      const [{ data: questionRows }] = await Promise.all([questionRequest])
 
       const loadedQuestions = (questionRows ?? []) as QuestionMeta[]
       const questionIds = loadedQuestions.map((question) => question.id)
+      let statusRows: QuestionStatusRow[] = []
       if (user && questionIds.length) {
-        const [{ data: statusRows }, { data: resumeRow }] = await Promise.all([
-          supabase.from('user_question_status').select('question_id,status,wrong_count').eq('user_id', user.id).in('question_id', questionIds).in('status', ['wrong', 'unsure']),
-          chapterIds.length
-            ? supabase.from('chapter_progress').select('chapter_id,last_question_id,updated_at').eq('user_id', user.id).in('chapter_id', chapterIds).order('updated_at', { ascending: false }).limit(1).maybeSingle()
-            : Promise.resolve({ data: null }),
+        const [loadedStatuses, { data: resumeRow }] = await Promise.all([
+          loadQuestionStatuses(supabase, user.id, questionIds),
+          supabase.from('chapter_progress').select('chapter_id,last_question_id,updated_at').eq('user_id', user.id).in('chapter_id', chapterIds).order('updated_at', { ascending: false }).limit(1).maybeSingle(),
         ])
+        statusRows = loadedStatuses
         const statusMap: Record<string, WrongStatus> = {}
-        for (const row of statusRows ?? []) statusMap[row.question_id] = row as WrongStatus
+        for (const row of statusRows) {
+          const status = normalizeLearningStatus(row.status)
+          if (status !== 'green') statusMap[row.question_id] = { question_id: row.question_id, status, wrong_count: row.wrong_count ?? null }
+        }
         setWrongStatuses(statusMap)
         setResume(resumeRow as Resume | null)
       }
 
-      const progressMap: Record<string, ChapterProgress> = {}
-      for (const row of chapterProgressRows ?? []) progressMap[row.chapter_id] = row as ChapterProgress
+      const calculated = buildLearningProgress(
+        loadedChapters.map((chapter) => ({ id: chapter.id, course_id: courseId })),
+        loadedQuestions,
+        statusRows
+      )
       const noteMap: Record<string, string> = {}
       for (const note of (notes ?? []) as ReviewNote[]) noteMap[note.chapter_id] = note.content
 
       setCourse(courseRow as Course | null)
       setBrief(briefRow as Brief | null)
-      setProgress(courseProgressRow as CourseProgress | null)
+      setProgress(calculated.courseProgress[courseId] ?? null)
       setChapterRows(loadedChapters)
-      setChapterProgress(progressMap)
+      setChapterProgress(calculated.chapterProgress)
       setQuestions(loadedQuestions)
       setReviewNotes(noteMap)
       setSelectedReviewId((notes?.[0]?.chapter_id as string | undefined) ?? loadedChapters[0]?.id ?? null)
       setLoading(false)
     })()
   }, [courseId, supabase])
+
+  const refreshLearningProgress = useCallback(async () => {
+    if (!courseId || chapterRows.length === 0) return
+    const { data: sessionData } = await supabase.auth.getSession()
+    const user = sessionData.session?.user
+    if (!user) return
+
+    const questionIds = questions.map((question) => question.id)
+    try {
+      const statusRows = await loadQuestionStatuses(supabase, user.id, questionIds)
+      const calculated = buildLearningProgress(
+        chapterRows.map((chapter) => ({ id: chapter.id, course_id: courseId })),
+        questions,
+        statusRows
+      )
+      setProgress(calculated.courseProgress[courseId] ?? null)
+      setChapterProgress(calculated.chapterProgress)
+
+      const statusMap: Record<string, WrongStatus> = {}
+      for (const row of statusRows) {
+        const status = normalizeLearningStatus(row.status)
+        if (status !== 'green') statusMap[row.question_id] = { question_id: row.question_id, status, wrong_count: row.wrong_count ?? null }
+      }
+      setWrongStatuses(statusMap)
+    } catch {
+      // Keep the last known progress visible if a refresh request is interrupted.
+    }
+  }, [chapterRows, courseId, questions, supabase])
 
   function chooseView(view: Exclude<ViewKey, 'practice'>) {
     setActiveView(view)
@@ -302,7 +331,7 @@ export default function CoursePage() {
                 <div className="wrong-table__head"><span>题目</span><span>所属章节</span><span>题型</span><span>错误次数</span><span>状态</span><span>操作</span></div>
                 {wrongQuestions.map(({ status, question }) => (
                   <div className="wrong-table__row" key={question.id}>
-                    <strong>{question.stem}</strong><span>{chapterNames[question.chapter_id]}</span><span>{question.type}</span><span>{status.wrong_count ?? 1} 次</span><span className={status.status === 'wrong' ? 'wrong-state is-red' : 'wrong-state is-yellow'}>{status.status === 'wrong' ? '需复习' : '不确定'}</span><button type="button" onClick={() => startPractice(question.chapter_id, question.id, 'wrong')}>重新作答</button>
+                    <strong>{question.stem}</strong><span>{chapterNames[question.chapter_id]}</span><span>{question.type}</span><span>{status.wrong_count ?? 1} 次</span><span className={status.status === 'red' ? 'wrong-state is-red' : 'wrong-state is-yellow'}>{status.status === 'red' ? '需复习' : '不确定'}</span><button type="button" onClick={() => startPractice(question.chapter_id, question.id, 'wrong')}>重新作答</button>
                   </div>
                 ))}
               </div>
@@ -319,7 +348,11 @@ export default function CoursePage() {
               chapterId={selectedChapterId}
               embedded
               initialQuestionId={selectedQuestionId}
-              onBack={() => setActiveView(practiceOrigin)}
+              onProgressChange={refreshLearningProgress}
+              onBack={() => {
+                void refreshLearningProgress()
+                setActiveView(practiceOrigin)
+              }}
             />
           </section>
         ) : null}

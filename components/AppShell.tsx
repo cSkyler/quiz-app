@@ -15,6 +15,7 @@ import {
   UserRound,
 } from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
+import { daysUntilExam } from '@/lib/exam'
 import ThemeSwitcher from './ThemeSwitcher'
 
 const navItems = [
@@ -22,12 +23,6 @@ const navItems = [
   { href: '/courses', label: '我的课程', icon: GraduationCap },
   { href: '/progress', label: '学习进度', icon: BarChart3 },
 ]
-
-function daysUntilExam() {
-  const today = new Date()
-  const exam = new Date('2026-07-19T00:00:00+08:00')
-  return Math.max(0, Math.ceil((exam.getTime() - today.getTime()) / 86400000))
-}
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()

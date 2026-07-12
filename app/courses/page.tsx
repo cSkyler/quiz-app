@@ -4,14 +4,14 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowRight, BookOpen, BrainCircuit, CalendarDays, Search } from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
+import { loadAllLearningProgress, type CourseProgress } from '@/lib/learningProgress'
 
 type Course = { id: string; title: string; description: string | null; order_index: number }
-type Progress = { course_id: string; total: number; attempted: number; green: number; yellow: number; red: number }
 
 export default function CoursesPage() {
   const supabase = useMemo(() => supabaseBrowser(), [])
   const [courses, setCourses] = useState<Course[]>([])
-  const [progress, setProgress] = useState<Record<string, Progress>>({})
+  const [progress, setProgress] = useState<Record<string, CourseProgress>>({})
   const [examDates, setExamDates] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
@@ -21,9 +21,9 @@ export default function CoursesPage() {
       const { data: sessionData } = await supabase.auth.getSession()
       const user = sessionData.session?.user
       const progressRequest = user
-        ? supabase.from('v_progress_courses').select('course_id,total,attempted,green,yellow,red').eq('user_id', user.id)
-        : Promise.resolve({ data: [] })
-      const [{ data: courseRows }, { data: briefRows }, { data: progressRows }] = await Promise.all([
+        ? loadAllLearningProgress(supabase, user.id)
+        : Promise.resolve({ courseProgress: {} as Record<string, CourseProgress>, chapterProgress: {} })
+      const [{ data: courseRows }, { data: briefRows }, { courseProgress }] = await Promise.all([
         supabase.from('courses').select('id,title,description,order_index').order('order_index'),
         supabase.from('course_brief').select('course_id,exam_date'),
         progressRequest,
@@ -32,9 +32,7 @@ export default function CoursesPage() {
       const dates: Record<string, string> = {}
       for (const row of briefRows ?? []) if (row.exam_date) dates[row.course_id] = row.exam_date
       setExamDates(dates)
-      const progressMap: Record<string, Progress> = {}
-      for (const row of progressRows ?? []) progressMap[row.course_id] = row as Progress
-      setProgress(progressMap)
+      setProgress(courseProgress)
       setLoading(false)
     })()
   }, [supabase])

@@ -75,6 +75,7 @@ export default function ChapterPracticeClient(props: {
   embedded?: boolean
   initialQuestionId?: string | null
   onBack?: () => void
+  onProgressChange?: () => void | Promise<void>
 }) {
   const route = useParams() as { courseId?: string | string[]; chapterId?: string | string[] }
   const sp = useSearchParams()
@@ -144,6 +145,7 @@ const topLeftText = fromWrongbook ? '返回错题本' : (viewMode === 'quiz' ? '
   const [selfEval, setSelfEval] = useState<null | 'green' | 'yellow' | 'red'>(null)
 
   const [masteryMap, setMasteryMap] = useState<Record<string, MasteryRow>>({})
+  const [answeredQuestionIds, setAnsweredQuestionIds] = useState<Set<string>>(() => new Set())
 
 
 
@@ -160,6 +162,8 @@ const topLeftText = fromWrongbook ? '返回错题本' : (viewMode === 'quiz' ? '
     return questions.filter((q) => q.type === mode)
   })()
   const q = filteredList[idx]
+  const answeredCount = filteredList.reduce((count, question) => count + (answeredQuestionIds.has(question.id) ? 1 : 0), 0)
+  const answeredPercent = filteredList.length ? (answeredCount / filteredList.length) * 100 : 0
 
  
   // ====== 拉题 + 进度 + mastery ======
@@ -222,23 +226,36 @@ useEffect(() => {
       // 5) 读取 mastery（关键：否则退出再进错题就“清空”）
       if (session && list.length > 0) {
         const ids = list.map((x) => x.id)
-        const { data: mRows, error: mErr } = await supabase
-          .from('mastery')
-          .select('question_id,status,wrong_count,correct_streak')
-          .eq('user_id', session.user.id)
-          .in('question_id', ids)
+        const [{ data: mRows, error: mErr }, { data: answeredRows, error: answeredErr }] = await Promise.all([
+          supabase
+            .from('mastery')
+            .select('question_id,status,wrong_count,correct_streak')
+            .eq('user_id', session.user.id)
+            .in('question_id', ids),
+          supabase
+            .from('user_question_status')
+            .select('question_id')
+            .eq('user_id', session.user.id)
+            .in('question_id', ids),
+        ])
   
         if (cancelled) return
         if (mErr) {
           setStatus(`ERROR mastery read: ${mErr.message}`)
           return
         }
+        if (answeredErr) {
+          setStatus(`ERROR progress read: ${answeredErr.message}`)
+          return
+        }
   
         const map: Record<string, any> = {}
         for (const r of mRows ?? []) map[r.question_id] = r
         setMasteryMap(map)
+        setAnsweredQuestionIds(new Set((answeredRows ?? []).map((row) => row.question_id)))
       } else {
         setMasteryMap({})
+        setAnsweredQuestionIds(new Set())
       }
   
       if (!cancelled) setStatus('OK')
@@ -307,6 +324,40 @@ useEffect(() => {
     setCaseInput('')
     setResult(null)
     setSelfEval(null)
+  }
+
+  function setQuestionAnswered(questionId: string, answered: boolean) {
+    setAnsweredQuestionIds((previous) => {
+      if (previous.has(questionId) === answered) return previous
+      const next = new Set(previous)
+      if (answered) next.add(questionId)
+      else next.delete(questionId)
+      return next
+    })
+  }
+
+  function markQuestionAnswered(questionId: string) {
+    setQuestionAnswered(questionId, true)
+    void Promise.resolve(props.onProgressChange?.()).catch(() => undefined)
+  }
+
+  async function saveQuestionProgress(questionId: string, verdict: 'correct' | 'wrong' | 'unsure') {
+    const wasAlreadyAnswered = answeredQuestionIds.has(questionId)
+    setQuestionAnswered(questionId, true)
+    try {
+      const saved = await updateUserQuestionStatus(supabase, questionId, verdict)
+      if (!saved) {
+        if (!wasAlreadyAnswered) setQuestionAnswered(questionId, false)
+        setStatus('进度保存失败：当前登录状态无效，请重新登录后再试。')
+        return false
+      }
+      void Promise.resolve(props.onProgressChange?.()).catch(() => undefined)
+      return true
+    } catch (error) {
+      if (!wasAlreadyAnswered) setQuestionAnswered(questionId, false)
+      setStatus(`进度保存失败：${error instanceof Error ? error.message : '请检查网络后重试。'}`)
+      return false
+    }
   }
   
 
@@ -388,19 +439,22 @@ useEffect(() => {
   
     // 1) 写 user_question_status（用于错题本/进度条）
    // 主观题自评：直接写回 user_question_status（按你点的绿/黄/红落库）
-{
-  const now = new Date().toISOString()
+    const now = new Date().toISOString()
 
-  const { data: prev, error: prevErr } = await supabase
-    .from('user_question_status')
-    .select('status, wrong_count, streak_correct')
-    .eq('user_id', uid)
-    .eq('question_id', q.id)
-    .maybeSingle()
+    const { data: prevStatusRow, error: prevErr } = await supabase
+      .from('user_question_status')
+      .select('status, wrong_count, streak_correct')
+      .eq('user_id', uid)
+      .eq('question_id', q.id)
+      .maybeSingle()
 
-  if (!prevErr) {
-    const prevWrong = Number((prev as any)?.wrong_count ?? 0)
-    const prevStreak = Number((prev as any)?.streak_correct ?? 0)
+    if (prevErr) {
+      setStatus(`进度保存失败：${prevErr.message}`)
+      return
+    }
+
+    const prevWrong = Number(prevStatusRow?.wrong_count ?? 0)
+    const prevStreak = Number(prevStatusRow?.streak_correct ?? 0)
 
     const next = {
       user_id: uid,
@@ -427,11 +481,15 @@ useEffect(() => {
       next.last_is_correct = true
     }
 
-    await supabase
+    const { error: progressError } = await supabase
       .from('user_question_status')
       .upsert([next], { onConflict: 'user_id,question_id' })
-  }
-}
+
+    if (progressError) {
+      setStatus(`进度保存失败：${progressError.message}`)
+      return
+    }
+    markQuestionAnswered(q.id)
 
   
     // 2) 同步写 mastery（用于你当前页面的 mode=wrong/掌握度 badge 等）
@@ -504,9 +562,7 @@ useEffect(() => {
       }
       setResult({ correct: null, msg: '已提交（自评）' })
       // ✅ 新增：主观题先按 unsure 记为黄（后续做自评按钮再改成 correct/wrong）
-try {
-  await updateUserQuestionStatus(supabase, q.id, 'unsure')
-} catch {}
+      await saveQuestionProgress(q.id, 'unsure')
 
       if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
         ;(navigator as any).vibrate(12)
@@ -522,9 +578,7 @@ try {
       }
       setResult({ correct: null, msg: '已提交（自评）' })
       // ✅ 新增：主观题先按 unsure 记为黄（后续做自评按钮再改成 correct/wrong）
-try {
-  await updateUserQuestionStatus(supabase, q.id, 'unsure')
-} catch {}
+      await saveQuestionProgress(q.id, 'unsure')
 
       return
     }
@@ -594,14 +648,10 @@ if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
   ;(navigator as any).vibrate(isCorrect ? 18 : [25, 40, 25])
 }
 
-await writeAttemptAndMastery(isCorrect, chosen)
-
-// ✅ 新增：写入 user_question_status（红/黄/绿）
-try {
-  await updateUserQuestionStatus(supabase, q.id, isCorrect ? 'correct' : 'wrong')
-} catch {
-  // 不影响做题主流程
-}
+await Promise.all([
+  writeAttemptAndMastery(isCorrect, chosen),
+  saveQuestionProgress(q.id, isCorrect ? 'correct' : 'wrong')
+])
 
 
   }
@@ -659,7 +709,7 @@ try {
 
 
         <div className="ui-badge">
-          {filteredList.length ? `进度 ${idx + 1}/${filteredList.length}` : '无题目'}
+          {filteredList.length ? `题目 ${idx + 1}/${filteredList.length}` : '无题目'}
         </div>
       </div>
 
@@ -918,11 +968,10 @@ try {
       }
 
       const chosen = { user_order: userOrder, correct_order: correctOrder }
-      await writeAttemptAndMastery(isCorrect, chosen)
-
-      try {
-        await updateUserQuestionStatus(supabase, q.id, isCorrect ? 'correct' : 'wrong')
-      } catch {}
+      await Promise.all([
+        writeAttemptAndMastery(isCorrect, chosen),
+        saveQuestionProgress(q.id, isCorrect ? 'correct' : 'wrong')
+      ])
     }}
   />
 )}
@@ -1090,8 +1139,8 @@ try {
         {props.embedded ? (
           <aside className="practice-progress-rail">
             <div className="practice-rail-title">答题进度</div>
-            <strong>{filteredList.length ? `${idx + 1} / ${filteredList.length}` : '0 / 0'}</strong>
-            <div className="practice-rail-progress"><i style={{ width: `${filteredList.length ? ((idx + 1) / filteredList.length) * 100 : 0}%` }} /></div>
+            <strong>{answeredCount} / {filteredList.length}</strong>
+            <div className="practice-rail-progress"><i style={{ width: `${answeredPercent}%` }} /></div>
             <dl>
               <div><dt>当前题型</dt><dd>{q?.type ?? '—'}</dd></div>
               <div><dt>已掌握</dt><dd>{Object.values(masteryMap).filter((item) => item.status === 'green').length}</dd></div>

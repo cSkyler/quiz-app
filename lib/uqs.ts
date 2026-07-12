@@ -24,10 +24,10 @@ export async function updateUserQuestionStatus(
   supabase: SupabaseClient,
   questionId: string,
   verdict: Verdict
-) {
+): Promise<UqsRow | null> {
   const { data: sess } = await supabase.auth.getSession()
   const uid = sess.session?.user?.id
-  if (!uid) return
+  if (!uid) return null
 
   // 读旧状态（若不存在则当作首次）
   const { data: prev, error: prevErr } = await supabase
@@ -38,14 +38,14 @@ export async function updateUserQuestionStatus(
     .maybeSingle()
 
   // 如果读取失败也不要影响做题主流程
-  if (prevErr) return
+  if (prevErr) throw prevErr
 
   const now = new Date().toISOString()
   const prevStatus = (prev?.status as UqsRow['status']) ?? 'yellow'
   const prevWrong = Number(prev?.wrong_count ?? 0)
   const prevStreak = Number(prev?.streak_correct ?? 0)
 
-  let next: UqsRow = {
+  const next: UqsRow = {
     user_id: uid,
     question_id: questionId,
     status: 'yellow',
@@ -85,7 +85,10 @@ if (prevWrong === 0) {
   }
 
   // upsert：一人一题一行
-  await supabase
+  const { error } = await supabase
     .from('user_question_status')
     .upsert([next], { onConflict: 'user_id,question_id' })
+
+  if (error) throw error
+  return next
 }
