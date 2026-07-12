@@ -6,11 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "content:build": "node scripts/build-course-packs.mjs",
+    "content:audit": "node scripts/audit-course-packs.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.88.0",
+    "lucide-react": "^1.24.0",
     "next": "16.0.10",
     "react": "19.2.1",
     "react-dom": "19.2.1"

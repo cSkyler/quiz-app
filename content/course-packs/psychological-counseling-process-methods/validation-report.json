@@ -1,0 +1,17 @@
+{
+  "valid": true,
+  "errors": [],
+  "stats": {
+    "chapters": 16,
+    "questions": 288,
+    "types": {
+      "single": 112,
+      "multi": 48,
+      "blank": 48,
+      "short": 48,
+      "case": 32
+    },
+    "coreQuestions": 0
+  },
+  "source_policy": "以《心理咨询过程与方法》课程PPT为最高优先级，按照PPT的16章和探索—领悟—行动三阶段结构整理；仅使用助人技术通用知识补充解释，不引入与课件冲突的额外考点。"
+}

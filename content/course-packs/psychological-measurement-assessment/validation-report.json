@@ -1,0 +1,17 @@
+{
+  "valid": true,
+  "errors": [],
+  "stats": {
+    "chapters": 12,
+    "questions": 270,
+    "types": {
+      "single": 198,
+      "multi": 36,
+      "blank": 12,
+      "short": 12,
+      "case": 12
+    },
+    "coreQuestions": 130
+  },
+  "source_policy": "以8份《心理测量与评估》课程课件为最高优先级；题目以选择题、概念理解和情境应用为主；初始评估、危机评估和人格评估按核心章节加权。"
+}

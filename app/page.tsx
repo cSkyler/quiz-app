@@ -1,258 +1,70 @@
-'use client'
-
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
-import { supabaseBrowser } from '@/lib/supabaseBrowser'
+import {
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  BrainCircuit,
+  CheckCircle2,
+  ClipboardCheck,
+  Layers3,
+  RotateCcw,
+  Sparkles,
+} from 'lucide-react'
+import SiteSettingText from '@/components/SiteSettingText'
 
-type Course = {
-  id: string
-  title: string
-  description: string | null
-  order_index: number
-}
+const features = [
+  { icon: BookOpen, title: '结构化复习资料', text: '按课程与章节整理重点，在阅读后自然进入对应练习。' },
+  { icon: ClipboardCheck, title: '完整题型练习', text: '覆盖客观题、主观题、案例题与排序题，提交后立即复盘。' },
+  { icon: RotateCcw, title: '错题持续复习', text: '保留错误轨迹，以待复习、复习中、已掌握管理薄弱题目。' },
+  { icon: BarChart3, title: '真实学习进度', text: '查看课程完成度、章节正确率和掌握状态，不只统计刷题数量。' },
+]
 
-export default function HomePage() {
-  const supabase = useMemo(() => supabaseBrowser(), [])
-  const [status, setStatus] = useState('Loading...')
-  const [sessionEmail, setSessionEmail] = useState<string | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [courses, setCourses] = useState<Course[]>([])
-  const [announcement, setAnnouncement] = useState('')
-  const [changelog, setChangelog] = useState('')
-  
-  useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSessionEmail(session?.user?.email ?? null)
-    })
-
-    ;(async () => {
-      setStatus('Loading...')
-
-      const { data: sess } = await supabase.auth.getSession()
-      const session = sess.session
-      setSessionEmail(session?.user?.email ?? null)
-
-      // 课程列表
-      const { data: cRows, error: cErr } = await supabase
-        .from('courses')
-        .select('id,title,description,order_index')
-        .order('order_index', { ascending: true })
-
-      if (cErr) {
-        setStatus(`ERROR courses: ${cErr.message}`)
-        return
-      }
-      setCourses((cRows ?? []) as Course[])
-
-      // 是否管理员（可选）
-      if (session) {
-        const { data: prof, error: pErr } = await supabase
-          .from('user_profiles')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .maybeSingle()
-
-          if (!pErr && (prof?.role === 'admin' || prof?.role === 'owner')) setIsAdmin(true)
-            else setIsAdmin(false)
-            
-      } else {
-        setIsAdmin(false)
-      }
-// 公告/更新说明
-const { data: sRows, error: sErr } = await supabase
-  .from('site_settings')
-  .select('key,value')
-  .in('key', ['announcement', 'changelog'])
-
-if (sErr) {
-  // 不阻塞首页（公告读取失败不影响刷题）
-  console.log('site_settings read error:', sErr.message)
-} else {
-  const map: Record<string, string> = {}
-  for (const r of sRows ?? []) map[r.key] = r.value
-  setAnnouncement(map.announcement ?? '')
-  setChangelog(map.changelog ?? '')
-}
-
-      setStatus('OK')
-    })()
-
-    return () => {
-      authListener.subscription.unsubscribe()
-    }
-  }, [supabase])
-
-  async function signOut() {
-    await supabase.auth.signOut()
-    setSessionEmail(null)
-    setIsAdmin(false)
-  }
-
+export default function LandingPage() {
   return (
-    <main className="ui-container">
-      <div className="ui-topbar">
-        <div>
-          <h1 className="ui-title">MAPer 学习平台</h1>
-          <p className="ui-subtitle">
-          {sessionEmail ? `已登录：${sessionEmail}` : '游客模式：仅可浏览首页；登录后才能刷题'}
-          </p>
+    <main className="landing-page">
+      <header className="landing-nav">
+        <Link href="/" className="landing-brand"><span><BookOpen size={20} /></span><strong>MAPer</strong><small>学习平台</small></Link>
+        <nav aria-label="官网导航"><a href="#features">功能</a><a href="#courses">课程</a><a href="#workflow">使用流程</a></nav>
+        <div className="landing-nav__actions"><Link className="button button--ghost" href="/login">登录</Link><Link className="button button--primary" href="/signup">免费注册 <ArrowRight size={16} /></Link></div>
+      </header>
+
+      <section className="landing-hero">
+        <div className="landing-hero__copy">
+          <div className="eyebrow"><Sparkles size={15} /> 为心理学课程复习而设计</div>
+          <h1>MAPer 学习平台</h1>
+          <SiteSettingText settingKey="landing_intro" fallback="把课程资料、章节练习、错题复盘与学习进度放在同一个清晰的工作台里。平时持续积累，考前集中冲刺。" />
+          <div className="landing-hero__actions"><Link className="button button--primary button--large" href="/signup">创建学习账户 <ArrowRight size={18} /></Link><Link className="button button--secondary button--large" href="/login">已有账户，登录</Link></div>
+          <div className="landing-trust"><span><CheckCircle2 size={16} /> 开放注册</span><span><CheckCircle2 size={16} /> 多设备同步</span><span><CheckCircle2 size={16} /> 免费使用</span></div>
         </div>
 
-        <div className="ui-row" style={{ gap: 10 }}>
-          {sessionEmail ? (
-            <button className="ui-btn" onClick={signOut}>退出登录</button>
-          ) : (
-            <Link className="ui-btn" href="/login" style={{ textDecoration: 'none' }}>
-              登录 / 切换
-            </Link>
-          )}
-
-          {isAdmin ? (
-            <Link className="ui-btn" href="/admin" style={{ textDecoration: 'none' }}>
-              管理端
-            </Link>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="ui-status">{status}</div>
-
-      <div className="ui-card">
-        <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="ui-title" style={{ fontSize: 18, margin: 0 }}>课程</h2>
-          
-
-        </div>
-
-        {courses.length === 0 ? (
-          <p className="ui-subtitle" style={{ marginTop: 10 }}>暂无课程。</p>
-        ) : (
-          <>
-  {/* Mobile: Card list */}
-  <div className="ui-only-mobile" style={{ marginTop: 12, display: 'grid', gap: 12 }}>
-    {courses.map((c) => (
-      <div key={c.id} className="ui-card">
-        <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <div style={{ minWidth: 0 }}>
-            <div className="ui-subtitle">#{c.order_index}</div>
-            <div className="ui-h2 ui-clamp-2">{c.title}</div>
-            {c.description ? <div className="ui-subtitle ui-clamp-2">{c.description}</div> : null}
+        <div className="product-scene" aria-label="MAPer 学习工作台预览">
+          <div className="product-scene__sidebar">
+            <div className="product-scene__logo"><BookOpen size={15} /> MAPer</div>
+            <span className="is-active"><Layers3 size={14} /> 学习首页</span>
+            <span><BookOpen size={14} /> 我的课程</span>
+            <span><ClipboardCheck size={14} /> 复习资料</span>
+            <span><RotateCcw size={14} /> 错题本</span>
+            <span><BarChart3 size={14} /> 学习进度</span>
+            <div className="product-scene__countdown"><small>考试倒计时</small><strong>8 天</strong><small>2026年7月19日</small></div>
+          </div>
+          <div className="product-scene__main">
+            <div className="product-scene__top"><span>长期学习 · 考前冲刺</span><span className="preview-avatar">M</span></div>
+            <div className="product-scene__welcome"><div><small>上午好，学习从清晰的下一步开始</small><strong>继续你的复习计划</strong></div><button>继续学习</button></div>
+            <div className="product-scene__stats"><div><small>今日答题</small><strong>24</strong></div><div><small>最近正确率</small><strong>82%</strong></div><div><small>待复习错题</small><strong>13</strong></div></div>
+            <div className="preview-course"><span className="preview-course__icon"><BrainCircuit size={18} /></span><div><strong>心理测量与评估</strong><small>6 / 10 章节 · 正确率 78%</small><i><b style={{ width: '62%' }} /></i></div><button>继续</button></div>
+            <div className="preview-course"><span className="preview-course__icon is-green"><BookOpen size={18} /></span><div><strong>心理咨询过程与方法</strong><small>3 / 8 章节 · 正确率 71%</small><i><b style={{ width: '38%' }} /></i></div><button>开始</button></div>
           </div>
         </div>
+      </section>
 
-        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <Link
-            className="ui-btn ui-btn-primary"
-            href={`/courses/${c.id}`}
-            style={{ textDecoration: 'none', textAlign: 'center' }}
-          >
-            进入课程
-          </Link>
-          <Link
-            className="ui-btn"
-            href={`/courses/${c.id}/chapters`}
-            style={{ textDecoration: 'none', textAlign: 'center' }}
-          >
-            章节
-          </Link>
-        </div>
-      </div>
-    ))}
-  </div>
+      <section className="landing-section" id="features"><div className="section-heading"><span>核心功能</span><h2>把复习过程连成一条完整路径</h2><p>每个页面都明确告诉你当前状态，以及最值得做的下一步。</p></div><div className="feature-grid">{features.map(({ icon: Icon, title, text }) => <article key={title}><span><Icon size={20} /></span><h3>{title}</h3><p>{text}</p></article>)}</div></section>
 
-  {/* Desktop: Table */}
-  <div className="ui-only-desktop ui-table-wrap" style={{ marginTop: 10 }}>
-    <table className="ui-table">
-      <thead>
-        <tr>
-          <th style={{ width: 80 }}>顺序</th>
-          <th>课程</th>
-          <th style={{ width: 220 }}>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {courses.map((c) => (
-          <tr key={c.id}>
-            <td>{c.order_index}</td>
-            <td>
-              <div style={{ fontWeight: 800 }}>{c.title}</div>
-              {c.description ? <div className="ui-subtitle">{c.description}</div> : null}
-            </td>
-            <td className="ui-row" style={{ gap: 10 }}>
-            <Link
-  className="ui-btn ui-btn-primary"
-  href={sessionEmail ? `/courses/${c.id}` : `/login?next=${encodeURIComponent(`/courses/${c.id}`)}`}
-  style={{ textDecoration: 'none' }}
->
-  进入课程
-</Link>
+      <section className="landing-band" id="courses"><div><span className="section-kicker">当前备考课程</span><h2>围绕 2026年7月19日，有节奏地完成复习</h2><p>课程介绍、考试结构、学习建议和作业内容会持续完善，题目与资料按章节统一组织。</p></div><div className="landing-course-list"><article><span>01</span><div><h3>心理测量与评估</h3><p>测量理论、信效度、常用测验及评估应用</p></div><BrainCircuit size={22} /></article><article><span>02</span><div><h3>心理咨询过程与方法</h3><p>咨询阶段、关系建立、核心技术与案例应用</p></div><BookOpen size={22} /></article></div></section>
 
-<Link
-  className="ui-btn"
-  href={sessionEmail ? `/courses/${c.id}/chapters` : `/login?next=${encodeURIComponent(`/courses/${c.id}/chapters`)} `}
-  style={{ textDecoration: 'none' }}
->
-  章节
-</Link>
+      <section className="landing-section workflow-section" id="workflow"><div className="section-heading"><span>使用流程</span><h2>从课程内容到真正掌握</h2></div><div className="workflow-line">{['选择课程','阅读资料','章节练习','查看解析','复习错题','检查进度'].map((item, index) => <div key={item}><span>{index + 1}</span><strong>{item}</strong>{index < 5 ? <ArrowRight size={17} /> : null}</div>)}</div></section>
 
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-</>
-
-        )}
-      </div>
-
-      <div className="ui-card" style={{ marginTop: 14 }}>
-  <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-    <h2 className="ui-title" style={{ fontSize: 18, marginTop: 0, marginBottom: 0 }}>公告</h2>
-    <span className="ui-meta">持续更新中</span>
-  </div>
-
-  <div style={{ marginTop: 10 }}>
-  <p className="ui-body" style={{ marginTop: 0, whiteSpace: 'pre-wrap' }}>
-  {announcement?.trim()
-    ? announcement
-    : '本平台由 抱水 个人搭建并维护，面向同学们免费开放使用。平台以“高效刷题 + 错题复盘”为核心，当前仍在迭代中，如遇到题库、答案或功能异常，欢迎随时反馈，我会尽快修复与优化。'}
-</p>
-
-    <p className="ui-body" style={{ marginBottom: 0 }}>
-      使用提示：游客模式可刷题但不保存进度；登录后支持多设备同步与错题/熟练度记录。
-    </p>
-  </div>
-
-  <div style={{ marginTop: 12 }} className="ui-divider" />
-
-  <div style={{ marginTop: 12 }}>
-    <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-      <div>
-        <div className="ui-label">更新</div>
-        <div className="ui-body ui-muted" style={{ whiteSpace: 'pre-wrap' }}>
-  {changelog?.trim()
-    ? changelog
-    : '手机端课程列表已优化为卡片布局，提升可读性与触控体验。'}
-</div>
-
-      </div>
-      <span className="ui-badge">v0.1</span>
-    </div>
-  </div>
-
-  <div style={{ marginTop: 12 }} className="ui-divider" />
-
-  <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-    
-    
-  </div>
-
-  <div className="ui-subtle" style={{ marginTop: 10 }}>
-    说明：本平台为学习辅助工具，题目与解析以课程资料、网上资料为参考利用AI生成，若与老师标准答案冲突，请以课堂为准。
-  </div>
-</div>
-
+      <section className="landing-cta"><div><h2>开始建立你的复习节奏</h2><p>注册后保存学习进度、错题和掌握度，并在不同设备继续学习。</p></div><Link className="button button--primary button--large" href="/signup">免费注册 <ArrowRight size={18} /></Link></section>
+      <footer className="landing-footer"><div className="landing-brand"><span><BookOpen size={18} /></span><strong>MAPer</strong></div><SiteSettingText settingKey="disclaimer" fallback="学习辅助工具。题目与解析如与课堂标准答案冲突，请以课堂内容为准。" /><span>持续迭代中</span></footer>
     </main>
   )
 }

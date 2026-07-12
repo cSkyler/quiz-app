@@ -69,14 +69,20 @@ function getSubjectiveReference(answer: any): string {
   return ''
 }
 
-export default function ChapterPracticeClient(props: { chapterId?: string; courseId?: string }) {
+export default function ChapterPracticeClient(props: {
+  chapterId?: string
+  courseId?: string
+  embedded?: boolean
+  initialQuestionId?: string | null
+  onBack?: () => void
+}) {
   const route = useParams() as { courseId?: string | string[]; chapterId?: string | string[] }
   const sp = useSearchParams()
 // URL params: 目录/做题模式 + 题型筛选 + 指定题目
 
 const typeParam = sp.get('type') // tf | single | multi | fill | short | case
-const qParam = sp.get('q')       // question id
-const viewMode = sp.get('mode') === 'catalog' ? 'catalog' : 'quiz'
+const qParam = props.initialQuestionId ?? sp.get('q')       // question id
+const viewMode = props.embedded ? 'quiz' : (sp.get('mode') === 'catalog' ? 'catalog' : 'quiz')
 
 
   const chapterIdRaw = props.chapterId ?? route.chapterId
@@ -638,11 +644,17 @@ try {
 
   // ====== 渲染 ======
   return (
-    <main className="ui-container">
+    <main className={props.embedded ? 'embedded-practice' : 'ui-container'}>
       <div className="ui-topbar">
-      <Link className="ui-btn ui-btn-ghost ui-btn-sm" href={topLeftHref}>
-  ← {topLeftText}
-</Link>
+      {props.embedded ? (
+        <button className="ui-btn ui-btn-ghost ui-btn-sm" type="button" onClick={props.onBack}>
+          ← 返回课程内容
+        </button>
+      ) : (
+        <Link className="ui-btn ui-btn-ghost ui-btn-sm" href={topLeftHref}>
+          ← {topLeftText}
+        </Link>
+      )}
 
 
 
@@ -651,7 +663,45 @@ try {
         </div>
       </div>
 
-      <div className="ui-status">{status}</div>
+      <div className={props.embedded ? 'practice-workspace-grid' : 'practice-workspace-plain'}>
+        {props.embedded ? (
+          <aside className="practice-question-nav">
+            <div className="practice-rail-title">题目列表</div>
+            <div className="practice-question-grid">
+              {allQuestions.map((item, questionIndex) => {
+                const state = masteryMap[item.id]?.status
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={[
+                      q?.id === item.id ? 'is-active' : '',
+                      state ? `is-${state}` : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => {
+                      const targetIndex = filteredList.findIndex((candidate) => candidate.id === item.id)
+                      if (targetIndex >= 0) {
+                        setIdx(targetIndex)
+                        resetPicks()
+                      }
+                    }}
+                    title={`第 ${questionIndex + 1} 题`}
+                  >
+                    {questionIndex + 1}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="practice-nav-legend">
+              <span><i className="is-green" />已掌握</span>
+              <span><i className="is-yellow" />不确定</span>
+              <span><i className="is-red" />需复习</span>
+            </div>
+          </aside>
+        ) : null}
+
+        <section className="practice-stage">
+      {status !== 'OK' ? <div className="ui-status">{status}</div> : null}
 
 {/* 做题反馈条：替代旧的题型按钮区（仅 quiz 模式显示） */}
 {viewMode === 'quiz' && (
@@ -1035,6 +1085,22 @@ try {
           </div>
         )
       )}
+        </section>
+
+        {props.embedded ? (
+          <aside className="practice-progress-rail">
+            <div className="practice-rail-title">答题进度</div>
+            <strong>{filteredList.length ? `${idx + 1} / ${filteredList.length}` : '0 / 0'}</strong>
+            <div className="practice-rail-progress"><i style={{ width: `${filteredList.length ? ((idx + 1) / filteredList.length) * 100 : 0}%` }} /></div>
+            <dl>
+              <div><dt>当前题型</dt><dd>{q?.type ?? '—'}</dd></div>
+              <div><dt>已掌握</dt><dd>{Object.values(masteryMap).filter((item) => item.status === 'green').length}</dd></div>
+              <div><dt>待复习</dt><dd>{Object.values(masteryMap).filter((item) => item.status === 'red' || item.status === 'yellow').length}</dd></div>
+            </dl>
+            <p>提交答案后会自动保存进度与掌握状态。</p>
+          </aside>
+        ) : null}
+      </div>
     </main>
   )
 }

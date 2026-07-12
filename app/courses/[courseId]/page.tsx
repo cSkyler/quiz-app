@@ -2,428 +2,328 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  FileText,
+  Lightbulb,
+  ListChecks,
+  Play,
+  RotateCcw,
+  Target,
+} from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
+import ChapterPracticeClient from '@/components/ChapterPracticeClient'
 
-type Course = {
-  id: string
-  title: string
-  description: string | null
+type Course = { id: string; title: string; description: string | null }
+type Brief = { exam_structure: string | null; assignments: string | null; study_tips: string | null; exam_date: string | null }
+type CourseProgress = { total: number; green: number; yellow: number; red: number; attempted: number; unseen: number }
+type Chapter = { id: string; title: string; order_index: number; provided_by: string | null }
+type ChapterProgress = { chapter_id: string; total: number; green: number; yellow: number; red: number; attempted: number; unseen: number }
+type QuestionMeta = { id: string; chapter_id: string; type: string; stem: string }
+type ReviewNote = { chapter_id: string; content: string }
+type WrongStatus = { question_id: string; status: 'wrong' | 'unsure'; wrong_count: number | null }
+type Resume = { chapter_id: string; last_question_id: string | null }
+type ViewKey = 'overview' | 'chapters' | 'review' | 'wrong' | 'practice'
+
+const tabItems: Array<{ key: Exclude<ViewKey, 'practice'>; label: string }> = [
+  { key: 'overview', label: '课程概览' },
+  { key: 'chapters', label: '章节与题库' },
+  { key: 'review', label: '复习资料' },
+  { key: 'wrong', label: '错题' },
+]
+
+function Placeholder() {
+  return <div className="content-placeholder"><span>内容整理中</span><p>管理员可以稍后在内容工作台中补充。</p></div>
 }
 
-type CourseProgress = {
-  course_id: string
-  total: number
-  green: number
-  yellow: number
-  red: number
-  attempted: number
-  unseen: number
+function ReviewDocument({ content }: { content: string }) {
+  const pages = content.split('---PAGE---').map((page) => page.trim()).filter(Boolean)
+  return (
+    <div className="inline-review-document">
+      {pages.map((page, pageIndex) => (
+        <section key={pageIndex}>
+          {pages.length > 1 ? <span className="review-page-label">第 {pageIndex + 1} 页</span> : null}
+          {page.split(/\r?\n/).map((line, lineIndex) => {
+            const text = line.trim()
+            if (!text) return <div className="review-spacer" key={lineIndex} />
+            if (text.startsWith('### ')) return <h4 key={lineIndex}>{text.slice(4)}</h4>
+            if (text.startsWith('## ')) return <h3 key={lineIndex}>{text.slice(3)}</h3>
+            if (text.startsWith('# ')) return <h2 key={lineIndex}>{text.slice(2)}</h2>
+            if (/^[-*•]\s*/.test(text)) return <p className="review-list-item" key={lineIndex}>{text.replace(/^[-*•]\s*/, '')}</p>
+            return <p key={lineIndex}>{text}</p>
+          })}
+        </section>
+      ))}
+    </div>
+  )
 }
 
-type CourseBrief = {
-  course_id: string
-  exam_structure: string | null
-  assignments: string | null
-  study_tips: string | null
-  exam_date: string | null // date -> 'YYYY-MM-DD'
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n))
-}
-
-function startOfLocalDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
-}
-
-function daysBetweenLocal(a: Date, b: Date) {
-  // b - a, in days (local day)
-  const ms = startOfLocalDay(b).getTime() - startOfLocalDay(a).getTime()
-  return Math.round(ms / 86400000)
-}
-
-export default function CourseHomePage() {
+export default function CoursePage() {
   const params = useParams() as { courseId?: string | string[] }
-  const courseIdRaw = params.courseId
-  const courseId = Array.isArray(courseIdRaw) ? courseIdRaw[0] : courseIdRaw
-
+  const courseId = Array.isArray(params.courseId) ? params.courseId[0] : params.courseId ?? ''
   const supabase = useMemo(() => supabaseBrowser(), [])
-  const [status, setStatus] = useState('Loading...')
+  const contentRef = useRef<HTMLDivElement>(null)
 
   const [course, setCourse] = useState<Course | null>(null)
-  const [courseProg, setCourseProg] = useState<CourseProgress | null>(null)
-  const [resume, setResume] = useState<null | { chapter_id: string; last_question_id: string | null }>(null)
-
-  const [brief, setBrief] = useState<CourseBrief | null>(null)
-  const [chaptersTotal, setChaptersTotal] = useState(0)
-  const [reviewPrepared, setReviewPrepared] = useState(0)
+  const [brief, setBrief] = useState<Brief | null>(null)
+  const [progress, setProgress] = useState<CourseProgress | null>(null)
+  const [chapterRows, setChapterRows] = useState<Chapter[]>([])
+  const [chapterProgress, setChapterProgress] = useState<Record<string, ChapterProgress>>({})
+  const [questions, setQuestions] = useState<QuestionMeta[]>([])
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
+  const [wrongStatuses, setWrongStatuses] = useState<Record<string, WrongStatus>>({})
+  const [resume, setResume] = useState<Resume | null>(null)
+  const [activeView, setActiveView] = useState<ViewKey>('overview')
+  const [practiceOrigin, setPracticeOrigin] = useState<Exclude<ViewKey, 'practice'>>('chapters')
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
+  const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null)
+  const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null)
+  const [wrongChapterFilter, setWrongChapterFilter] = useState('all')
+  const [wrongStateFilter, setWrongStateFilter] = useState('all')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!courseId) return
     ;(async () => {
-      if (!courseId) {
-        setStatus('ERROR: courseId missing')
-        return
+      const { data: sessionData } = await supabase.auth.getSession()
+      const user = sessionData.session?.user
+      const [{ data: courseRow }, { data: briefRow }, { data: chapters }, { data: notes }] = await Promise.all([
+        supabase.from('courses').select('id,title,description').eq('id', courseId).maybeSingle(),
+        supabase.from('course_brief').select('exam_structure,assignments,study_tips,exam_date').eq('course_id', courseId).maybeSingle(),
+        supabase.from('chapters').select('id,title,order_index,provided_by').eq('course_id', courseId).order('order_index'),
+        supabase.from('chapter_review_notes').select('chapter_id,content').eq('course_id', courseId),
+      ])
+
+      const loadedChapters = (chapters ?? []) as Chapter[]
+      const chapterIds = loadedChapters.map((chapter) => chapter.id)
+      const questionRequest = chapterIds.length
+        ? supabase.from('questions').select('id,chapter_id,type,stem').in('chapter_id', chapterIds)
+        : Promise.resolve({ data: [] })
+      const courseProgressRequest = user
+        ? supabase.from('v_progress_courses').select('total,green,yellow,red,attempted,unseen').eq('user_id', user.id).eq('course_id', courseId).maybeSingle()
+        : Promise.resolve({ data: null })
+      const chapterProgressRequest = user && chapterIds.length
+        ? supabase.from('v_progress_chapters').select('chapter_id,total,green,yellow,red,attempted,unseen').eq('user_id', user.id).in('chapter_id', chapterIds)
+        : Promise.resolve({ data: [] })
+
+      const [{ data: questionRows }, { data: courseProgressRow }, { data: chapterProgressRows }] = await Promise.all([
+        questionRequest,
+        courseProgressRequest,
+        chapterProgressRequest,
+      ])
+
+      const loadedQuestions = (questionRows ?? []) as QuestionMeta[]
+      const questionIds = loadedQuestions.map((question) => question.id)
+      if (user && questionIds.length) {
+        const [{ data: statusRows }, { data: resumeRow }] = await Promise.all([
+          supabase.from('user_question_status').select('question_id,status,wrong_count').eq('user_id', user.id).in('question_id', questionIds).in('status', ['wrong', 'unsure']),
+          chapterIds.length
+            ? supabase.from('chapter_progress').select('chapter_id,last_question_id,updated_at').eq('user_id', user.id).in('chapter_id', chapterIds).order('updated_at', { ascending: false }).limit(1).maybeSingle()
+            : Promise.resolve({ data: null }),
+        ])
+        const statusMap: Record<string, WrongStatus> = {}
+        for (const row of statusRows ?? []) statusMap[row.question_id] = row as WrongStatus
+        setWrongStatuses(statusMap)
+        setResume(resumeRow as Resume | null)
       }
 
-      setStatus('Loading...')
+      const progressMap: Record<string, ChapterProgress> = {}
+      for (const row of chapterProgressRows ?? []) progressMap[row.chapter_id] = row as ChapterProgress
+      const noteMap: Record<string, string> = {}
+      for (const note of (notes ?? []) as ReviewNote[]) noteMap[note.chapter_id] = note.content
 
-      // 0) 课程信息
-      {
-        const { data, error } = await supabase
-          .from('courses')
-          .select('id,title,description')
-          .eq('id', courseId)
-          .maybeSingle()
-
-        if (error) {
-          setStatus(`ERROR: ${error.message}`)
-          return
-        }
-        setCourse((data ?? null) as Course | null)
-      }
-
-      // 1) 课程简介（course_brief）
-      {
-        const { data: b, error: bErr } = await supabase
-          .from('course_brief')
-          .select('course_id,exam_structure,assignments,study_tips,exam_date')
-          .eq('course_id', courseId)
-          .maybeSingle()
-
-        // 没有数据不算错误：允许 brief 为 null
-        if (!bErr) setBrief((b ?? null) as any)
-      }
-
-      // 2) 课程总进度（v_progress_courses）
-      {
-        const { data: prog, error: pErr } = await supabase
-          .from('v_progress_courses')
-          .select('course_id,total,green,yellow,red,attempted,unseen')
-          .eq('course_id', courseId)
-          .maybeSingle()
-
-        if (!pErr) setCourseProg((prog ?? null) as any)
-      }
-
-      // 3) 章节列表（用于：继续上次刷题 + 复习准备数量）
-      {
-        const { data: chs, error: chErr } = await supabase
-          .from('chapters')
-          .select('id')
-          .eq('course_id', courseId)
-
-        if (!chErr) {
-          const ids = (chs ?? []).map((x: any) => x.id).filter(Boolean)
-          setChaptersTotal(ids.length)
-
-          // 3.1) 继续上次：从 chapter_progress 找本课程最近一次
-          if (ids.length > 0) {
-            const { data: sess } = await supabase.auth.getSession()
-            const uid = sess.session?.user?.id
-            if (uid) {
-              const { data: prog2 } = await supabase
-                .from('chapter_progress')
-                .select('chapter_id,last_question_id,updated_at')
-                .eq('user_id', uid)
-                .in('chapter_id', ids)
-                .order('updated_at', { ascending: false })
-                .limit(1)
-                .maybeSingle()
-
-              if (prog2?.chapter_id) {
-                setResume({ chapter_id: prog2.chapter_id, last_question_id: prog2.last_question_id ?? null })
-              } else {
-                setResume(null)
-              }
-            }
-          }
-
-          // 3.2) 复习内容准备数量：chapter_review_notes（只数有内容的章节）
-          // 使用 head+count，避免把 content 拉到首页
-          const { count } = await supabase
-            .from('chapter_review_notes')
-            .select('chapter_id', { count: 'exact', head: true })
-            .eq('course_id', courseId)
-
-          setReviewPrepared(count ?? 0)
-        }
-      }
-
-      setStatus('OK')
+      setCourse(courseRow as Course | null)
+      setBrief(briefRow as Brief | null)
+      setProgress(courseProgressRow as CourseProgress | null)
+      setChapterRows(loadedChapters)
+      setChapterProgress(progressMap)
+      setQuestions(loadedQuestions)
+      setReviewNotes(noteMap)
+      setSelectedReviewId((notes?.[0]?.chapter_id as string | undefined) ?? loadedChapters[0]?.id ?? null)
+      setLoading(false)
     })()
-  }, [supabase, courseId])
+  }, [courseId, supabase])
 
-  function CourseProgressBar(p?: CourseProgress | null) {
-    const total = p?.total ?? 0
-    const green = p?.green ?? 0
-    const yellow = p?.yellow ?? 0
-    const red = p?.red ?? 0
-    const unseen = Math.max(0, total - (green + yellow + red))
-
-    const pct = (x: number) => (total ? `${(x / total) * 100}%` : '0%')
-
-    return (
-      <div style={{ marginTop: 10 }}>
-        <div className="ui-progress">
-          <div className="ui-progress__bar">
-            <div className="ui-progress__seg ui-progress__green" style={{ width: pct(green) }} />
-            <div className="ui-progress__seg ui-progress__yellow" style={{ width: pct(yellow) }} />
-            <div className="ui-progress__seg ui-progress__red" style={{ width: pct(red) }} />
-            <div className="ui-progress__seg ui-progress__unseen" style={{ width: pct(unseen) }} />
-          </div>
-        </div>
-
-        <div className="ui-progress-meta">
-          <span>已做 {green + yellow + red}/{total}</span>
-          <span>绿 {green} / 黄 {yellow} / 红 {red}</span>
-        </div>
-      </div>
-    )
+  function chooseView(view: Exclude<ViewKey, 'practice'>) {
+    setActiveView(view)
+    requestAnimationFrame(() => contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
-  function CountdownCard() {
-    const examDateStr = brief?.exam_date ?? null
-    if (!examDateStr) {
-      return (
-        <div className="ui-card" style={{ marginTop: 12 }}>
-          <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <h2 className="ui-title" style={{ fontSize: 18, margin: 0 }}>考试倒计时</h2>
-            <span className="ui-meta">未设置考试日期</span>
-          </div>
-          <div className="ui-subtitle" style={{ marginTop: 8 }}>
-            你可以在 Supabase 的 <code>course_brief.exam_date</code> 填写 date（YYYY-MM-DD）。
-          </div>
-        </div>
-      )
-    }
-
-    // date -> local day (avoid timezone shift)
-    const exam = new Date(`${examDateStr}T00:00:00`)
-    const today = new Date()
-    const daysLeft = daysBetweenLocal(today, exam) // exam - today
-
-       // 14 天冲刺：考试日前 14 天窗口（包含考试日）
-       const sprintWindow = 14
-       const totalSteps = sprintWindow - 1 // 13
-       const sprintStart = new Date(exam)
-       sprintStart.setDate(sprintStart.getDate() - totalSteps)
-   
-       const daysToSprintStart = daysBetweenLocal(today, sprintStart) // sprintStart - today
-       const inSprint = daysToSprintStart <= 0 && daysLeft >= 0
-   
-       // 进度：冲刺开始日进度=0，考试日进度=1
-       let progress = 0
-       if (daysLeft < 0) progress = 1
-       else if (daysLeft > totalSteps) progress = 0
-       else progress = clamp((totalSteps - daysLeft) / totalSteps, 0, 1)
-   
-       const pct = Math.round(progress * 100)
-   
-       return (
-         <div className="ui-card" style={{ marginTop: 12 }}>
-           <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-             <h2 className="ui-title" style={{ fontSize: 18, margin: 0 }}>考试倒计时</h2>
-             <span className="ui-meta">考试日期：{examDateStr}</span>
-           </div>
-   
-           <div className="ui-row" style={{ marginTop: 10, justifyContent: 'space-between', alignItems: 'baseline' }}>
-             <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: 0.5 }}>
-               {daysLeft >= 0 ? `D-${daysLeft}` : '已结束'}
-             </div>
-             <div className="ui-meta">
-               {daysLeft >= 0 ? `还剩 ${daysLeft} 天` : `已过 ${Math.abs(daysLeft)} 天`}
-             </div>
-           </div>
-   
-           <div style={{ marginTop: 12 }}>
-             <div className="ui-meta" style={{ marginBottom: 8 }}>
-               {daysLeft < 0
-                 ? '两周复习（14天）：已完成'
-                 : inSprint
-                   ? `两周复习（14天）：已过 ${Math.round(progress * sprintWindow)}/${sprintWindow}`
-                   : `距离两周复习开始还有 ${Math.max(0, daysToSprintStart)} 天`}
-             </div>
-   
-                       {/* 视频进度条 + 流星光点（可溢出） */}
-          <div
-            className="ui-countdown-bar"
-            style={
-              {
-                // 你想要的右下角蓝色花火风：统一用同一个 accent 控制“流星 + 已完成进度”
-                // 后面你要换色，只改这里即可
-                ['--cd-accent' as any]: 'rgba(158, 53, 114, 0.95)',
-                ['--cd-accent-soft' as any]: 'rgba(71, 5, 59, 0.96)',
-              } as any
-            }
-          >
-            <div className="ui-countdown-bar__wrap">
-              <div className="ui-countdown-bar__track">
-                <div className="ui-countdown-bar__fill" style={{ width: `${pct}%` }} />
-              </div>
-
-             
-
-              {/* 流星（在轨道之上，不受裁剪） */}
-              <div className="ui-countdown-bar__comet" style={{ left: `${pct}%` }} />
-
-{/* 花火粒子：以彗星为中心，向左侧 30° 范围内散落（不裁剪，可飞出轨道） */}
-<div className="ui-countdown-bar__sparks" style={{ left: `${pct}%` }}>
-  {Array.from({ length: 40 }).map((_, i) => (
-    <span key={i} className="ui-countdown-bar__spark" />
-  ))}
-</div>
-
-
-            </div>
-
-            <div className="ui-countdown-bar__labels">
-              <span>开始</span>
-              <span>两周复习</span>
-              <span>考试</span>
-            </div>
-          </div>
-
-           </div>
-         </div>
-       )
-   
+  function startPractice(chapterId: string, questionId: string | null = null, origin: Exclude<ViewKey, 'practice'> = 'chapters') {
+    setSelectedChapterId(chapterId)
+    setSelectedQuestionId(questionId)
+    setPracticeOrigin(origin)
+    setActiveView('practice')
+    requestAnimationFrame(() => contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
-  function CourseBriefCard() {
-    const hasAny =
-      (brief?.exam_structure && brief.exam_structure.trim()) ||
-      (brief?.assignments && brief.assignments.trim()) ||
-      (brief?.study_tips && brief.study_tips.trim())
+  if (loading) return <main className="workspace-page"><div className="route-loader route-loader--inline"><span className="loader" /><p>正在加载课程…</p></div></main>
+  if (!course) return <main className="workspace-page"><div className="empty-state panel"><BookOpen /><strong>课程不存在或暂不可用</strong><Link className="button button--primary" href="/courses">返回课程列表</Link></div></main>
 
-    return (
-      <div className="ui-card" style={{ marginTop: 12 }}>
-        <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h2 className="ui-title" style={{ fontSize: 18, margin: 0 }}>课程简介</h2>
-          <span className="ui-meta">考核构成 / 作业考核 / 复习建议</span>
-        </div>
-
-        {!hasAny ? (
-          <div className="ui-subtitle" style={{ marginTop: 8 }}>
-            暂无简介内容。
-          </div>
-        ) : (
-          <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
-            <div>
-              <div className="ui-meta" style={{ marginBottom: 6 }}>考核构成</div>
-              <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}>
-                {brief?.exam_structure?.trim() ? brief.exam_structure : '—'}
-              </div>
-            </div>
-
-            <div>
-              <div className="ui-meta" style={{ marginBottom: 6 }}>作业考核</div>
-              <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}>
-                {brief?.assignments?.trim() ? brief.assignments : '—'}
-              </div>
-            </div>
-
-            <div>
-              <div className="ui-meta" style={{ marginBottom: 6 }}>复习建议</div>
-              <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}>
-                {brief?.study_tips?.trim() ? brief.study_tips : '—'}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  function CourseReviewCard() {
-    const prepared = reviewPrepared
-    const total = chaptersTotal
-
-    return (
-      <div className="ui-card" style={{ marginTop: 12 }}>
-        <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h2 className="ui-title" style={{ fontSize: 18, margin: 0 }}>课程复习</h2>
-          <span className="ui-meta">{total ? `已准备 ${prepared}/${total} 章` : ''}</span>
-        </div>
-
-        
-
-        <div className="ui-row" style={{ marginTop: 12, gap: 10, flexWrap: 'wrap' }}>
-          <Link className="ui-btn ui-btn-primary" href={`/courses/${courseId}/review`} style={{ textDecoration: 'none' }}>
-            开始复习
-          </Link>
-
-          
-        </div>
-
-        {prepared === 0 ? (
-          <div className="ui-subtitle" style={{ marginTop: 8 }}>
-            当前还没导入任何章节复习内容。
-          </div>
-        ) : null}
-      </div>
-    )
-  }
-
-  function CourseProgressCard() {
-    return (
-      
-      <div className="ui-card" style={{ marginTop: 12 }}>
-        
-        <div className="ui-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h2 className="ui-title" style={{ fontSize: 18, margin: 0 }}>课程进度</h2>
-          <span className="ui-meta">{courseProg?.total ? `总题数：${courseProg.total}` : ''}</span>
-        </div>
-
-        {CourseProgressBar(courseProg)}
-
-        <div className="ui-row" style={{ marginTop: 12, gap: 10, flexWrap: 'wrap' }}>
-          <Link className="ui-btn ui-btn-primary" href={`/courses/${courseId}/chapters`} style={{ textDecoration: 'none' }}>
-            去章节列表
-          </Link>
-
-          <Link className="ui-btn" href={`/courses/${courseId}/wrongbook`} style={{ textDecoration: 'none' }}>
-            错题本
-          </Link>
-
-          <Link
-            className="ui-btn ui-btn-ghost"
-            href={
-              resume
-                ? `/courses/${courseId}/chapters/${resume.chapter_id}?mode=quiz${resume.last_question_id ? `&q=${resume.last_question_id}` : ''}`
-                : `/courses/${courseId}/chapters`
-            }
-            style={{ textDecoration: 'none' }}
-          >
-            继续上次刷题
-          </Link>
-        </div>
-
-        {!resume ? <div className="ui-subtitle" style={{ marginTop: 8 }}>暂无上次进度，建议从章节列表开始。</div> : null}
-      </div>
-    )
-  }
+  const percent = progress?.total ? Math.round((progress.attempted / progress.total) * 100) : 0
+  const examText = brief?.exam_date
+    ? new Date(`${brief.exam_date}T00:00:00`).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+    : '考试日期待设置'
+  const questionCounts = questions.reduce<Record<string, number>>((map, question) => {
+    map[question.chapter_id] = (map[question.chapter_id] ?? 0) + 1
+    return map
+  }, {})
+  const chapterNames = Object.fromEntries(chapterRows.map((chapter) => [chapter.id, chapter.title]))
+  const questionMap = Object.fromEntries(questions.map((question) => [question.id, question]))
+  const wrongQuestions = Object.values(wrongStatuses)
+    .map((status) => ({ status, question: questionMap[status.question_id] }))
+    .filter((item) => item.question)
+    .filter((item) => wrongChapterFilter === 'all' || item.question.chapter_id === wrongChapterFilter)
+    .filter((item) => wrongStateFilter === 'all' || item.status.status === wrongStateFilter)
+  const selectedReviewContent = selectedReviewId ? reviewNotes[selectedReviewId] ?? '' : ''
+  const selectedPracticeChapter = chapterRows.find((chapter) => chapter.id === selectedChapterId)
 
   return (
-    <main className="ui-container">
-      <div className="ui-topbar">
-        <Link className="ui-btn ui-btn-ghost ui-btn-sm" href="/">
-          ← 返回首页
-        </Link>
+    <main className="workspace-page course-workspace">
+      <Link className="back-link" href="/courses"><ArrowLeft size={17} />返回课程列表</Link>
+
+      <section className="course-header">
+        <div>
+          <span className="page-eyebrow">课程工作台</span>
+          <h1>{course.title}</h1>
+          <p>{course.description || '课程介绍内容整理中，现有章节、题目和学习记录不受影响。'}</p>
+          <div className="course-header__meta">
+            <span><CalendarDays size={17} />{examText}</span>
+            <span><BookOpen size={17} />{chapterRows.length} 个章节</span>
+            <span><FileText size={17} />{Object.keys(reviewNotes).length}/{chapterRows.length} 章资料已准备</span>
+          </div>
+        </div>
+        <div className="course-header__action"><div><span>总体进度</span><strong>{percent}%</strong></div><i><b style={{ width: `${percent}%` }} /></i></div>
+      </section>
+
+      <nav className="course-tabs" aria-label="课程内容切换">
+        {tabItems.map((tab) => (
+          <button key={tab.key} type="button" className={(activeView === tab.key || (activeView === 'practice' && practiceOrigin === tab.key)) ? 'is-active' : ''} onClick={() => chooseView(tab.key)}>
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      <div ref={contentRef} className="course-tab-content">
+        {activeView === 'overview' ? (
+          <div className="course-layout">
+            <div className="course-main">
+              <section className="panel course-next">
+                <div><span className="metric-icon"><Play size={21} /></span><div><small>建议下一步</small><h2>{resume ? '继续上次学习' : '从章节目录开始'}</h2><p>{resume ? '系统已经保存你上次停留的章节和题目。' : '选择一个章节，先查看资料或直接进入练习。'}</p></div></div>
+                <button className="button button--primary" type="button" onClick={() => resume ? startPractice(resume.chapter_id, resume.last_question_id) : chooseView('chapters')}>{resume ? '继续学习' : '开始学习'}<ArrowRight size={17} /></button>
+              </section>
+              <section className="panel">
+                <div className="panel-heading"><div><h2>课程信息</h2><p>考试结构、学习建议与作业要求</p></div></div>
+                <div className="brief-grid">
+                  <article><span><ClipboardList size={20} />考试结构</span>{brief?.exam_structure ? <p>{brief.exam_structure}</p> : <Placeholder />}</article>
+                  <article><span><Lightbulb size={20} />学习建议</span>{brief?.study_tips ? <p>{brief.study_tips}</p> : <Placeholder />}</article>
+                  <article><span><CheckCircle2 size={20} />作业与考核</span>{brief?.assignments ? <p>{brief.assignments}</p> : <Placeholder />}</article>
+                </div>
+              </section>
+            </div>
+            <aside className="course-side">
+              <section className="panel">
+                <div className="panel-heading"><div><h2>学习状态</h2><p>来自原有学习记录</p></div></div>
+                <div className="mastery-summary">
+                  <div><span className="mastery-dot is-green" /><span><strong>{progress?.green ?? 0}</strong><small>已掌握</small></span></div>
+                  <div><span className="mastery-dot is-yellow" /><span><strong>{progress?.yellow ?? 0}</strong><small>不确定</small></span></div>
+                  <div><span className="mastery-dot is-red" /><span><strong>{progress?.red ?? 0}</strong><small>需复习</small></span></div>
+                </div>
+              </section>
+              <section className="panel course-shortcuts">
+                <div className="panel-heading"><div><h2>快速入口</h2></div></div>
+                <button type="button" onClick={() => chooseView('review')}><span><FileText size={19} /><i><strong>复习资料</strong><small>{Object.keys(reviewNotes).length} 章已准备</small></i></span><ArrowRight size={17} /></button>
+                <button type="button" onClick={() => chooseView('chapters')}><span><Target size={19} /><i><strong>章节练习</strong><small>{chapterRows.length} 个章节</small></i></span><ArrowRight size={17} /></button>
+                <button type="button" onClick={() => chooseView('wrong')}><span><RotateCcw size={19} /><i><strong>错题本</strong><small>{wrongQuestions.length} 道待复习</small></i></span><ArrowRight size={17} /></button>
+              </section>
+            </aside>
+          </div>
+        ) : null}
+
+        {activeView === 'chapters' ? (
+          <section className="panel inline-chapter-panel">
+            <div className="panel-heading"><div><h2>章节与题库</h2><p>在当前课程页面选择章节并开始练习</p></div><ListChecks size={21} /></div>
+            <div className="chapter-table">
+              <div className="chapter-table__head"><span>章节</span><span>题目</span><span>完成度</span><span>正确率</span><span>学习状态</span><span>操作</span></div>
+              {chapterRows.map((chapter) => {
+                const row = chapterProgress[chapter.id]
+                const total = row?.total ?? questionCounts[chapter.id] ?? 0
+                const complete = total ? Math.round(((row?.attempted ?? 0) / total) * 100) : 0
+                const accuracy = row?.attempted ? Math.round((row.green / row.attempted) * 100) : 0
+                const state = complete >= 100 ? '已完成' : complete > 0 ? '学习中' : '未开始'
+                return (
+                  <div className="chapter-table__row" key={chapter.id}>
+                    <div><span>{String(chapter.order_index).padStart(2, '0')}</span><strong>{chapter.title}</strong></div>
+                    <span>{total} 题</span>
+                    <div className="chapter-progress-cell"><i><b style={{ width: `${complete}%` }} /></i><span>{complete}%</span></div>
+                    <span>{row?.attempted ? `${accuracy}%` : '—'}</span>
+                    <span className={`chapter-state is-${state === '已完成' ? 'done' : state === '学习中' ? 'active' : 'idle'}`}>{state}</span>
+                    <button type="button" onClick={() => startPractice(chapter.id)}>{row?.attempted ? '继续练习' : '开始练习'}<ArrowRight size={15} /></button>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        {activeView === 'review' ? (
+          <div className="inline-review-layout">
+            <aside className="panel inline-review-nav">
+              <div className="panel-heading"><div><h2>资料目录</h2><p>{Object.keys(reviewNotes).length} 章已准备</p></div></div>
+              {chapterRows.map((chapter) => (
+                <button key={chapter.id} type="button" className={selectedReviewId === chapter.id ? 'is-active' : ''} disabled={!reviewNotes[chapter.id]} onClick={() => setSelectedReviewId(chapter.id)}>
+                  <span>{chapter.order_index}</span><i><strong>{chapter.title}</strong><small>{reviewNotes[chapter.id] ? '可以阅读' : '内容整理中'}</small></i>
+                </button>
+              ))}
+            </aside>
+            <section className="panel inline-review-main">
+              <div className="inline-review-heading"><div><span className="page-eyebrow">章节复习资料</span><h2>{selectedReviewId ? chapterNames[selectedReviewId] : '请选择章节'}</h2></div>{selectedReviewId ? <button className="button button--primary" type="button" onClick={() => startPractice(selectedReviewId, null, 'review')}>开始本章练习<ArrowRight size={16} /></button> : null}</div>
+              {selectedReviewContent ? <ReviewDocument content={selectedReviewContent} /> : <div className="empty-state"><FileText size={26} /><strong>本章资料正在整理</strong><p>可以先进行章节练习，资料补充后会自动显示。</p></div>}
+            </section>
+          </div>
+        ) : null}
+
+        {activeView === 'wrong' ? (
+          <section className="panel inline-wrong-panel">
+            <div className="panel-heading"><div><h2>错题本</h2><p>按章节和掌握状态复习原有错题记录</p></div><RotateCcw size={21} /></div>
+            <div className="wrong-filters">
+              <label>章节<select value={wrongChapterFilter} onChange={(event) => setWrongChapterFilter(event.target.value)}><option value="all">全部章节</option>{chapterRows.map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title}</option>)}</select></label>
+              <label>状态<select value={wrongStateFilter} onChange={(event) => setWrongStateFilter(event.target.value)}><option value="all">全部状态</option><option value="wrong">需复习</option><option value="unsure">不确定</option></select></label>
+              <span>共 {wrongQuestions.length} 道</span>
+            </div>
+            {wrongQuestions.length ? (
+              <div className="wrong-table">
+                <div className="wrong-table__head"><span>题目</span><span>所属章节</span><span>题型</span><span>错误次数</span><span>状态</span><span>操作</span></div>
+                {wrongQuestions.map(({ status, question }) => (
+                  <div className="wrong-table__row" key={question.id}>
+                    <strong>{question.stem}</strong><span>{chapterNames[question.chapter_id]}</span><span>{question.type}</span><span>{status.wrong_count ?? 1} 次</span><span className={status.status === 'wrong' ? 'wrong-state is-red' : 'wrong-state is-yellow'}>{status.status === 'wrong' ? '需复习' : '不确定'}</span><button type="button" onClick={() => startPractice(question.chapter_id, question.id, 'wrong')}>重新作答</button>
+                  </div>
+                ))}
+              </div>
+            ) : <div className="empty-state"><CheckCircle2 size={28} /><strong>当前筛选下没有错题</strong><p>继续保持，新的学习记录会自动同步到这里。</p></div>}
+          </section>
+        ) : null}
+
+        {activeView === 'practice' && selectedChapterId ? (
+          <section className="inline-practice-section">
+            <div className="inline-practice-heading"><div><span className="page-eyebrow">专注答题</span><h2>{selectedPracticeChapter?.order_index}. {selectedPracticeChapter?.title}</h2></div></div>
+            <ChapterPracticeClient
+              key={`${selectedChapterId}-${selectedQuestionId ?? 'resume'}`}
+              courseId={courseId}
+              chapterId={selectedChapterId}
+              embedded
+              initialQuestionId={selectedQuestionId}
+              onBack={() => setActiveView(practiceOrigin)}
+            />
+          </section>
+        ) : null}
       </div>
-
-      <div className="ui-status">{status}</div>
-
-      <div className="ui-card">
-        <h1 className="ui-title">{course?.title ?? '课程'}</h1>
-        {course?.description ? <p className="ui-subtitle">{course.description}</p> : null}
-      </div>
-
-      {/* 单列堆叠：倒计时 -> 课程简介 -> 课程复习 -> 课程进度 */}
-      {CountdownCard()}
-      {CourseBriefCard()}
-      {CourseReviewCard()}
-      {CourseProgressCard()}
     </main>
   )
 }

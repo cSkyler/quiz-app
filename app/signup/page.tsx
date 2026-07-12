@@ -1,87 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { ArrowRight, BookOpen, Check, ShieldCheck } from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabaseBrowser'
 
 export default function SignupPage() {
   const supabase = useMemo(() => supabaseBrowser(), [])
-
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [status, setStatus] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  async function onSignup() {
-    setStatus('')
-    setLoading(true)
-
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password
-      })
-
-      if (error) {
-        setStatus(`注册失败：${error.message}`)
-        return
-      }
-
-      // 关键：识别“邮箱已存在”的常见情况（Supabase 的防枚举策略可能不直接报错）
-      // 如果 user.identities 为空，通常代表该邮箱已注册（或不可再次注册）
-      const identities = (data.user as any)?.identities
-      if (Array.isArray(identities) && identities.length === 0) {
-        setStatus('该邮箱可能已注册：请直接去登录（或使用“忘记密码”）。')
-        return
-      }
-
-      // 开启邮箱验证时：session 通常为 null，需要提示用户查收邮件
-      setStatus('注册成功：请到邮箱点击确认链接完成验证，然后再返回登录。')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <main className="ui-container">
-      <div className="ui-topbar">
-        <Link className="ui-link" href="/">← 返回首页</Link>
-        <Link className="ui-link" href="/login">去登录</Link>
-      </div>
-
-      <div className="ui-card" style={{ maxWidth: 520, margin: '0 auto' }}>
-        <h1 className="ui-title" style={{ fontSize: 20, marginTop: 0 }}>注册</h1>
-        <p className="ui-subtitle">注册后需要邮箱验证（推荐开启），验证通过后才能登录保存进度。</p>
-
-        <div className="ui-col" style={{ gap: 10, marginTop: 12 }}>
-          <input
-            className="ui-input"
-            placeholder="邮箱"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-          />
-          <input
-            className="ui-input"
-            placeholder="密码（建议至少 8 位）"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-          />
-
-          <button className="ui-btn ui-btn-primary" onClick={onSignup} disabled={loading}>
-            {loading ? '注册中...' : '注册'}
-          </button>
-
-          <div className="ui-row" style={{ justifyContent: 'space-between' }}>
-            <Link className="ui-link" href="/login">已有账号？去登录</Link>
-            <span />
-          </div>
-
-          {status ? <div className="ui-status">{status}</div> : null}
-        </div>
-      </div>
-    </main>
-  )
+  const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [password2,setPassword2]=useState(''); const [status,setStatus]=useState(''); const [loading,setLoading]=useState(false)
+  async function onSignup(){setStatus('');if(!email.trim()){setStatus('请输入邮箱。');return}if(password.length<8){setStatus('密码至少需要 8 位。');return}if(password!==password2){setStatus('两次输入的密码不一致。');return}setLoading(true);try{const{data,error}=await supabase.auth.signUp({email:email.trim(),password});if(error){setStatus(`注册失败：${error.message}`);return}const identities=(data.user as {identities?:unknown[]}|null)?.identities;if(Array.isArray(identities)&&identities.length===0){setStatus('该邮箱可能已经注册，请直接登录或重置密码。');return}setStatus('注册成功。请前往邮箱点击验证链接，验证后即可登录。')}finally{setLoading(false)}}
+  return <main className="auth-page"><aside className="auth-aside"><Link href="/" className="landing-brand"><span><BookOpen size={19}/></span><strong>MAPer</strong><small>学习平台</small></Link><div className="auth-aside__copy"><span>建立你的学习账户</span><h1>让每次练习都成为可积累的进度</h1><p>账户用于安全同步学习记录。平台不会因为界面升级而清空你的课程、错题或掌握度。</p><div className="auth-aside__features"><div><Check size={17}/>开放注册，免费使用</div><div><Check size={17}/>邮箱验证保护账户</div><div><ShieldCheck size={17}/>学习数据与内容数据分开维护</div></div></div></aside><section className="auth-main"><div className="auth-main__top"><span>已经注册？</span><Link className="button button--secondary" href="/login">去登录</Link></div><div className="auth-card"><h2>创建账户</h2><p>验证邮箱后即可进入新手教程和学习工作台。</p><div className="form-field"><label htmlFor="email">邮箱</label><input id="email" placeholder="name@example.com" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email"/></div><div className="form-field"><label htmlFor="password">密码</label><input id="password" placeholder="至少 8 位" type="password" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="new-password"/></div><div className="form-field"><label htmlFor="password2">确认密码</label><input id="password2" placeholder="再次输入密码" type="password" value={password2} onChange={e=>setPassword2(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')onSignup()}} autoComplete="new-password"/></div><button className="button button--primary auth-submit" onClick={onSignup} disabled={loading}>{loading?'正在注册…':<>注册账户 <ArrowRight size={17}/></>}</button><div className="auth-helper"><Link href="/">返回官网</Link><Link href="/login">使用已有账户</Link></div>{status?<div className="auth-status">{status}</div>:null}</div></section></main>
 }
